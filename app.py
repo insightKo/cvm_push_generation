@@ -376,17 +376,32 @@ if _nav_page == "📅 План":
         # Load PUSH data
         df_push = load_push_data(sid)
 
-        # Build push message map: (promo_num, date_str) -> [msg_numbers]
+        # Build push message map: (promo_num, date_obj) -> [msg_numbers]
         _push_msg_map = {}
         if not df_push.empty and "Номер промо" in df_push.columns:
             for _, pr in df_push.iterrows():
                 pnum = _norm_num(pr.get("Номер промо"))
-                pdate = str(pr.get("Дата", "")).strip()
+                pdate_str = str(pr.get("Дата", "")).strip()
                 msg = str(pr.get("Номер msg", "")).strip()
-                key = (pnum, pdate)
+                if not pnum or not pdate_str or pdate_str.lower() in ("nan", "none", ""):
+                    continue
+                # Parse date to date object
+                _pyear = str(pr.get("Год", "")).strip()
+                _push_yr = int(_pyear) if _pyear.isdigit() and int(_pyear) > 2000 else sel_year
+                try:
+                    _dp = pdate_str.rstrip(".").split(".")
+                    if len(_dp) >= 3 and _dp[2].isdigit() and int(_dp[2]) > 2000:
+                        _pdate_obj = _date_cls(int(_dp[2]), int(_dp[1]), int(_dp[0]))
+                    elif len(_dp) >= 2:
+                        _pdate_obj = _date_cls(_push_yr, int(_dp[1]), int(_dp[0]))
+                    else:
+                        continue
+                except (ValueError, IndexError):
+                    continue
+                key = (pnum, _pdate_obj)
                 if key not in _push_msg_map:
                     _push_msg_map[key] = []
-                if msg:
+                if msg and msg.lower() not in ("nan", "none", ""):
                     _push_msg_map[key].append(msg)
 
         # Build gantt_rows
@@ -413,24 +428,10 @@ if _nav_page == "📅 План":
             # Status logic
             is_push_channel = channel.strip().upper() == "PUSH"
             if is_push_channel:
-                # Check if push exists for this promo
-                has_push = any(
-                    k[0] == num for k in _push_msg_map.keys()
-                )
-                if has_push:
-                    status = "done"
-                else:
-                    # Check if conditions filled
-                    desc = str(row.get("Описание акции", "")).strip()
-                    if desc:
-                        status = "conditions"
-                    else:
-                        status = "empty"
+                has_push = any(k[0] == num for k in _push_msg_map.keys())
+                status = "done" if has_push else "conditions"
             else:
-                if end_d < today:
-                    status = "done"
-                else:
-                    status = "conditions"
+                status = "done" if end_d < today else "conditions"
 
             gantt_rows.append({
                 "num": num,
@@ -492,8 +493,7 @@ if _nav_page == "📅 План":
             # Day of week header
             _DOW_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
             html += '<tr>'
-            html += '<td style="border:1px solid #ddd; background:#f8f9fa;"></td>'
-            html += '<td style="border:1px solid #ddd; background:#f8f9fa;"></td>'
+            html += '<td style="border:1px solid #ddd; background:#f8f9fa; position:sticky; left:0; z-index:2;"></td>'
             if show_channel:
                 html += '<td style="border:1px solid #ddd; background:#f8f9fa;"></td>'
             for dt in all_dates:
@@ -506,7 +506,7 @@ if _nav_page == "📅 План":
             # Promo rows grouped by segment
             for seg_name, seg_rows in segments_dict.items():
                 # Segment header
-                col_span = 2 + (1 if show_channel else 0) + len(all_dates)
+                col_span = 1 + (1 if show_channel else 0) + len(all_dates)
                 html += f'<tr><td colspan="{col_span}" style="padding:6px 8px; border:1px solid #ddd; background:#e8eaf6; font-weight:bold;">{seg_name}</td></tr>'
 
                 for g in seg_rows:
@@ -528,9 +528,8 @@ if _nav_page == "📅 План":
                         border_style = "2px solid #ffc107" if is_weekend else "1px solid #ddd"
 
                         in_range = g["start"] <= dt <= g["end"]
-                        date_str = dt.strftime("%d.%m.%Y")
-                        push_key = (g["num"], date_str)
-                        msgs_list = _push_msg_map.get(push_key, [])
+                        push_key = (g["num"], dt)
+                        msgs_list = _push_msg_map.get(push_key, []) if g.get("channel", "").upper() == "PUSH" else []
 
                         if msgs_list:
                             # Blue cells with message numbers
@@ -723,16 +722,7 @@ elif _nav_page == "✨ Генерация PUSH":
             key="gen_ai_provider",
         )
         st.session_state.ai_provider = ai_provider
-        if ai_provider != "builtin":
-            ai_key = st.text_input(
-                "API ключ",
-                type="password",
-                key="gen_ai_key",
-                value=st.session_state.get("ai_key", ""),
-            )
-            st.session_state.ai_key = ai_key
-        else:
-            ai_key = ""
+        ai_key = ""  # ключи берутся из .env автоматически
 
     df_cvm = load_cvm_data(sid)
     df_push = load_push_data(sid)
@@ -870,7 +860,7 @@ elif _nav_page == "✨ Генерация PUSH":
                     results = st.session_state.mass_results
 
                     if "mass_checked" not in st.session_state:
-                        st.session_state.mass_checked = {i: True for i in range(len(results))}
+                        st.session_state.mass_checked = {i: False for i in range(len(results))}
 
                     for i, item in enumerate(results):
                         promo = item["promo"]
@@ -884,7 +874,7 @@ elif _nav_page == "✨ Генерация PUSH":
                             with ccol1:
                                 checked = st.checkbox(
                                     "",
-                                    value=st.session_state.mass_checked.get(i, True),
+                                    value=st.session_state.mass_checked.get(i, False),
                                     key=f"mass_check_{i}",
                                     label_visibility="collapsed",
                                 )
@@ -938,7 +928,7 @@ elif _nav_page == "✨ Генерация PUSH":
                                     "Текст",
                                     value=body,
                                     key=f"mass_body_{i}_{p_idx}",
-                                    height=60,
+                                    height=68,
                                     label_visibility="collapsed",
                                 )
                                 tlen = len(edited_title)
@@ -1027,6 +1017,15 @@ elif _nav_page == "✨ Генерация PUSH":
                     )
                     selected_promo = promo_options[selected_promo_key]
 
+                    # Очищаем данные поиска при смене акции
+                    _prev_promo = st.session_state.get("_single_prev_promo", "")
+                    if selected_promo_key != _prev_promo:
+                        st.session_state["_single_prev_promo"] = selected_promo_key
+                        st.session_state.pop("dixy_results", None)
+                        st.session_state.pop("dixy_selected_products", None)
+                        st.session_state.pop("dixy_chips_select", None)
+                        st.session_state.pop("single_generated_result", None)
+
                     # Promo details
                     with st.expander("📋 Детали акции", expanded=False):
                         info_cols = st.columns(3)
@@ -1047,20 +1046,78 @@ elif _nav_page == "✨ Генерация PUSH":
                         try:
                             from dixy_parser import search_discounts
                             promo_name = str(selected_promo.get("Название промо", ""))
-                            discounts = search_discounts(promo_name)
+                            with st.spinner("Ищу товары на dixy.ru..."):
+                                discounts = search_discounts(promo_name)
                             if discounts:
                                 st.session_state.dixy_results = discounts
-                                dixy_df = pd.DataFrame(discounts)
-                                display_cols_dixy = [c for c in ["name", "price", "old_price", "discount"]
-                                                     if c in dixy_df.columns]
-                                if display_cols_dixy:
-                                    st.dataframe(dixy_df[display_cols_dixy], use_container_width=True)
-                                else:
-                                    st.dataframe(dixy_df, use_container_width=True)
                             else:
+                                st.session_state.dixy_results = []
                                 st.info("Товары не найдены на dixy.ru")
                         except Exception as e:
                             st.warning(f"Ошибка поиска: {e}")
+
+                    # Показываем результаты поиска (сохранённые в session_state)
+                    if st.session_state.get("dixy_results"):
+                        _dixy_data = st.session_state.dixy_results
+                        st.caption(f"Найдено товаров на dixy.ru: {len(_dixy_data)}")
+
+                        dixy_df = pd.DataFrame(_dixy_data)
+                        dixy_df.index = range(1, len(dixy_df) + 1)
+                        dixy_df.index.name = "№"
+
+                        # Числовая скидка для сортировки
+                        import re as _re
+                        dixy_df["discount_num"] = dixy_df["discount"].apply(
+                            lambda x: int(m.group(1)) if (m := _re.search(r'-(\d+)%', str(x))) else 0
+                        )
+
+                        # Колонки для отображения
+                        dixy_df["url"] = dixy_df.get("url", "")
+                        display_cols = ["name", "price", "old_price", "discount_num", "discount", "by_card", "date_to", "url"]
+                        display_cols = [c for c in display_cols if c in dixy_df.columns]
+
+                        col_config = {
+                            "name": st.column_config.TextColumn("Товар", width="large"),
+                            "price": st.column_config.NumberColumn("Цена ₽", format="%.2f", width="small"),
+                            "old_price": st.column_config.NumberColumn("Была ₽", format="%.2f", width="small"),
+                            "discount_num": st.column_config.NumberColumn("Скидка %", width="small"),
+                            "discount": st.column_config.TextColumn("Тип", width="small"),
+                            "by_card": st.column_config.TextColumn("Карта", width="small"),
+                            "date_to": st.column_config.TextColumn("Срок", width="small"),
+                            "url": st.column_config.LinkColumn("🔗", width="small", display_text="↗"),
+                        }
+
+                        # Чекбокс прямо в таблице — тап на строку добавляет в промпт
+                        dixy_df["📌"] = False
+                        edit_cols = ["📌"] + display_cols
+                        col_config["📌"] = st.column_config.CheckboxColumn("📌", width="small", default=False)
+
+                        _edited = st.data_editor(
+                            dixy_df[edit_cols],
+                            use_container_width=True,
+                            column_config=col_config,
+                            height=min(400, 35 * len(dixy_df) + 38),
+                            key="dixy_table_editor",
+                            disabled=[c for c in display_cols],
+                        )
+
+                        # Собираем выбранные
+                        _sel_mask = _edited["📌"] == True
+                        if _sel_mask.any():
+                            _sel_items = []
+                            for _, _r in _edited[_sel_mask].iterrows():
+                                _lbl = str(_r.get("name", ""))
+                                _d = str(_r.get("discount", ""))
+                                _bc = str(_r.get("by_card", ""))
+                                if _d:
+                                    _lbl += f" {_d}"
+                                if _bc:
+                                    _lbl += f" {_bc}"
+                                _sel_items.append(_lbl)
+                            st.session_state["dixy_selected_products"] = _sel_items
+                            st.caption(f"📌 Выбрано для промпта: {len(_sel_items)}")
+                        else:
+                            st.session_state["dixy_selected_products"] = []
 
                     # Extra rules for AI providers
                     extra_rules = ""
@@ -1083,6 +1140,11 @@ elif _nav_page == "✨ Генерация PUSH":
                         rules = st.session_state.get("generation_rules", "")
                         if extra_rules:
                             rules = rules + "\n\n" + extra_rules
+                        # Добавляем выбранные товары с dixy.ru в контекст
+                        _sel_prods = st.session_state.get("dixy_selected_products", [])
+                        if _sel_prods:
+                            rules += "\n\nАктуальные товары со скидками на dixy.ru:\n"
+                            rules += "\n".join(f"- {p}" for p in _sel_prods)
 
                         with st.spinner("Генерация..."):
                             try:
@@ -1173,7 +1235,7 @@ elif _nav_page == "✨ Генерация PUSH":
                                         "Текст",
                                         value=variant.get("body", ""),
                                         key=f"single_body_{vkey}",
-                                        height=60,
+                                        height=68,
                                     )
                                     tlen = len(edited_title)
                                     blen = len(edited_body)

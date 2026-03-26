@@ -1,14 +1,11 @@
-"""Парсер каталога ДИКСИ — поиск скидок по категориям."""
+"""Парсер каталога ДИКСИ — поиск скидок по категориям через Playwright."""
 
 import re
-import requests
-from functools import lru_cache
 
 BASE_URL = "https://dixy.ru"
 
 # Маппинг категорий акций → slug каталога ДИКСИ
 _CATEGORY_SLUGS = {
-    # Продукты
     "овощ": "ovoshchi-frukty", "фрукт": "ovoshchi-frukty", "зелен": "ovoshchi-frukty",
     "банан": "ovoshchi-frukty", "яблок": "ovoshchi-frukty", "картоф": "ovoshchi-frukty",
     "помидор": "ovoshchi-frukty", "огурц": "ovoshchi-frukty",
@@ -31,7 +28,7 @@ _CATEGORY_SLUGS = {
     "заморож": "zamorojennye-produkty", "пельмен": "zamorojennye-produkty",
     "полуфабрикат": "zamorojennye-produkty", "морожен": "zamorojennye-produkty",
     "соус": "sousy-spetsii", "кетчуп": "sousy-spetsii", "майонез": "sousy-spetsii",
-    "специ": "sousy-spetsii",
+    "специ": "sousy-spetsii", "майо": "sousy-spetsii",
     "конфет": "konditerskie-izdeliya-torty", "шокол": "konditerskie-izdeliya-torty",
     "торт": "konditerskie-izdeliya-torty", "печень": "konditerskie-izdeliya-torty",
     "вафл": "konditerskie-izdeliya-torty",
@@ -45,12 +42,10 @@ _CATEGORY_SLUGS = {
     "кошач": "tovary-dlya-jivotnykh", "собач": "tovary-dlya-jivotnykh",
     "готов": "gotovaya-eda", "перекус": "gotovaya-eda", "салат": "gotovaya-eda",
     "здоров": "dlya-zdorovogo-pitaniya", "пп ": "dlya-zdorovogo-pitaniya",
-    # Напитки
     "пив": "pivo-i-piv-napitki", "вин": "vino-i-igristoe",
     "игрист": "vino-i-igristoe", "просекк": "vino-i-igristoe",
     "алкогол": "krepkiy-alkogol", "водк": "krepkiy-alkogol",
     "виск": "krepkiy-alkogol", "коньяк": "krepkiy-alkogol",
-    # Бытовые
     "хими": "bytovaya-khimiya", "бытов": "bytovaya-khimiya",
     "стирк": "bytovaya-khimiya", "моющ": "bytovaya-khimiya",
     "зуб": "gigiena-i-ukhod", "паст": "gigiena-i-ukhod",
@@ -58,200 +53,179 @@ _CATEGORY_SLUGS = {
 }
 
 
-def _get_session() -> requests.Session:
-    """Создать сессию с дефолтным магазином Москва."""
-    s = requests.Session()
-    s.headers.update({
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "X-Requested-With": "XMLHttpRequest",
-        "Referer": "https://dixy.ru/catalog/",
-    })
-    # Установить магазин (Москва, центр)
-    try:
-        s.get(f"{BASE_URL}/catalog/", timeout=10)
-        s.post(f"{BASE_URL}/ajax/ajax.php", data={
-            "action": "setCity",
-            "city": "Москва",
-            "lat": "55.7558",
-            "lon": "37.6173",
-        }, timeout=10)
-    except Exception:
-        pass
-    return s
+# Категории с несколькими slug (нужно парсить все)
+_MULTI_SLUGS = {
+    "детск": ["detskoe-pitanie", "tovary-dlya-detey"],
+    "малыш": ["detskoe-pitanie", "tovary-dlya-detey"],
+    "мам": ["detskoe-pitanie", "tovary-dlya-detey"],
+    "салфетк": ["tovary-dlya-detey", "gigiena-i-kosmetika"],
+    "подгузник": ["tovary-dlya-detey"],
+    "пасх": ["molochnye-produkty-yaytsa", "khleb-i-vypechka", "bakaleya"],
+}
 
 
-def _find_slug(promo_text: str) -> str | None:
-    """Найти slug каталога по тексту акции."""
+def _find_slugs(promo_text: str) -> list[str]:
+    """Найти все slug-и каталога по тексту акции."""
     text = promo_text.lower()
+
+    # Сначала проверяем мульти-slug маппинг
+    for keyword, slugs in _MULTI_SLUGS.items():
+        if keyword in text:
+            return slugs
+
+    # Затем обычный маппинг
     best_slug = None
     best_len = 0
     for keyword, slug in _CATEGORY_SLUGS.items():
         if keyword in text and len(keyword) > best_len:
             best_slug = slug
             best_len = len(keyword)
-    return best_slug
+    return [best_slug] if best_slug else []
 
 
-def _get_sid(session: requests.Session, slug: str) -> int | None:
-    """Получить sid категории из HTML страницы."""
+def _find_slug(promo_text: str) -> str | None:
+    """Найти slug каталога (обратная совместимость)."""
+    slugs = _find_slugs(promo_text)
+    return slugs[0] if slugs else None
+
+
+def _parse_price(text: str) -> float:
+    """Извлечь цену из '119.90руб.' или '149,90 ₽'."""
+    if not text:
+        return 0.0
+    # Ищем паттерн цены: 119.90 или 99,99
+    m = re.search(r'(\d+)[.,](\d{1,2})', text)
+    if m:
+        return float(f"{m.group(1)}.{m.group(2)}")
+    # Целое число
+    m2 = re.search(r'(\d+)', text)
+    if m2:
+        return float(m2.group(1))
+    return 0.0
+
+
+def _fetch_products_playwright(slug: str, max_scrolls: int = 3) -> list[dict]:
+    """Загрузить товары через headless Playwright."""
+    from playwright.sync_api import sync_playwright
+
+    url = f"{BASE_URL}/catalog/{slug}/"
+
     try:
-        resp = session.get(f"{BASE_URL}/catalog/{slug}/", timeout=10)
-        m = re.search(r'"sid"\s*:\s*(\d+)', resp.text)
-        if m:
-            return int(m.group(1))
-    except Exception:
-        pass
-    return None
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, timeout=20000)
+            page.wait_for_timeout(3000)
+
+            # Scroll to load more
+            for _ in range(max_scrolls):
+                page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                page.wait_for_timeout(1500)
+
+            raw_cards = page.evaluate('''() => {
+                const items = document.querySelectorAll('.card');
+                const results = [];
+                items.forEach(item => {
+                    const title = item.querySelector('.card__title')?.textContent?.trim() || '';
+                    const priceNum = item.querySelector('.card__price-num')?.textContent?.trim() || '';
+                    const priceCrossed = item.querySelector('.card__price-crossed')?.textContent?.trim() || '';
+                    const badges = [...item.querySelectorAll('.badge span')].map(b => b.textContent.trim());
+                    const link = item.querySelector('a.card__link')?.getAttribute('href') || '';
+                    if (!title) return;
+                    results.push({name: title, price: priceNum, old_price: priceCrossed, badges, link});
+                });
+                return results;
+            }''')
+
+            browser.close()
+            return raw_cards
+
+    except Exception as e:
+        print(f"Playwright error: {e}")
+        return []
 
 
-def _fetch_products(session: requests.Session, sid: int, max_pages: int = 3) -> list[dict]:
-    """Загрузить товары категории через JSON API."""
-    all_products = []
-    for page in range(1, max_pages + 1):
-        try:
-            resp = session.get(
-                f"{BASE_URL}/ajax/listing-json.php",
-                params={
-                    "block": "product-list",
-                    "sid": sid,
-                    "perPage": 30,
-                    "page": page,
-                },
-                timeout=15,
-            )
-            data = resp.json()
-            if not data.get("response"):
-                break
-            cards = data["response"][0].get("cards", []) if data["response"] else []
-            if not cards:
-                break
-            all_products.extend(cards)
+def search_discounts(promo_text: str) -> list[dict]:
+    """Найти товары на dixy.ru по тексту акции.
 
-            pagen = data["response"][0].get("pagenData", {})
-            if pagen.get("isLastPage", True):
-                break
-        except Exception:
-            break
-    return all_products
-
-
-def _fetch_discounts_page(session: requests.Session, max_pages: int = 5) -> list[dict]:
-    """Загрузить страницу 'Скидки по карте' (sid=839)."""
-    return _fetch_products(session, 839, max_pages)
-
-
-def search_discounts(promo_text: str, use_discount_page: bool = True) -> list[dict]:
-    """Найти скидки по тексту акции.
-
-    Returns: список dict с полями:
+    Returns: список dict:
         - name: название товара
-        - price: текущая цена
-        - old_price: старая цена
-        - discount: скидка в %
-        - discount_rub: скидка в рублях
-        - by_card: скидка по карте (True/False)
-        - date_to: дата окончания скидки (если есть)
-        - brand: бренд
-        - weight: вес/объём
-        - image: URL картинки
+        - price: текущая цена (число)
+        - old_price: старая цена (число или "")
+        - discount: скидка ("-16% по карте" или "по акции" или "")
+        - date_to: дата окончания ("до 29.03.2026" или "")
     """
-    session = _get_session()
+    slugs = _find_slugs(promo_text)
+    if not slugs:
+        return []
 
-    # 1. Ищем в категории акции
-    slug = _find_slug(promo_text)
+    # Собираем товары из всех подходящих категорий
+    raw_cards = []
+    seen_names = set()
+    for slug in slugs:
+        cards = _fetch_products_playwright(slug, max_scrolls=2)
+        for card in cards:
+            name = card.get("name", "")
+            if name not in seen_names:
+                seen_names.add(name)
+                raw_cards.append(card)
+
+    if not raw_cards:
+        return []
+
     products = []
+    for card in raw_cards:
+        price = _parse_price(card.get("price", ""))
+        old_price = _parse_price(card.get("old_price", ""))
+        badges = card.get("badges", [])
 
-    if slug:
-        sid = _get_sid(session, slug)
-        if sid:
-            products = _fetch_products(session, sid, max_pages=3)
+        # Дата и пометка "по карте", текстовый бейдж из бейджей
+        date_to = ""
+        by_card = ""
+        badge_text = ""
+        has_badge = False
+        for badge in badges:
+            if "%" in badge or "акци" in badge.lower():
+                has_badge = True
+                badge_text = badge  # сохраняем текстовый бейдж ("по акции", "-16% по карте")
+                if "карт" in badge.lower():
+                    by_card = "по карте"
+            if "до " in badge.lower():
+                date_to = badge
 
-    # 2. Если не нашли категорию — берём общую страницу скидок
-    if not products and use_discount_page:
-        products = _fetch_discounts_page(session, max_pages=3)
-
-    # 3. Фильтруем только товары со скидкой
-    discounted = []
-    for p in products:
-        if not p.get("crossPrice"):
+        # Показываем только товары со скидкой (есть бейдж или перечёркнутая цена)
+        if not has_badge and old_price <= 0:
             continue
 
-        try:
-            price = float(p.get("priceSimple", "0").replace(",", "."))
-            old_price = float(p.get("oldPriceSimple", "0").replace(",", "."))
-        except (ValueError, TypeError):
-            continue
+        # Считаем скидку математически если есть старая цена
+        discount = ""
+        if old_price > 0 and price > 0 and price < old_price:
+            pct = round((old_price - price) / old_price * 100)
+            discount = f"-{pct}%"
+            if by_card:
+                discount += " по карте"
+        elif badge_text:
+            # Fallback: текстовый бейдж если нет старой цены для расчёта
+            discount = badge_text
 
-        if old_price <= 0 or price >= old_price:
-            continue
+        # Ссылка на товар
+        link = card.get("link", "")
+        product_url = f"{BASE_URL}{link}" if link and link.startswith("/") else ""
 
-        discount_pct = round((1 - price / old_price) * 100)
-        discount_rub = round(old_price - price, 2)
-
-        # Определяем "по карте" — в ДИКСИ большинство скидок по карте
-        by_card = True  # По умолчанию — по карте клуба
-
-        name = p.get("title", "").strip()
-
-        discounted.append({
-            "name": name,
+        products.append({
+            "name": card["name"],
             "price": price,
-            "old_price": old_price,
-            "discount": discount_pct,
-            "discount_rub": discount_rub,
+            "old_price": old_price if old_price > 0 else "",
+            "discount": discount,
             "by_card": by_card,
-            "date_to": "",  # API не возвращает дату окончания скидки
-            "brand": p.get("brand", ""),
-            "weight": p.get("weight", ""),
-            "image": BASE_URL + p.get("src", "") if p.get("src") else "",
+            "date_to": date_to,
+            "url": product_url,
         })
 
-    # Сортируем по размеру скидки
-    discounted.sort(key=lambda x: x["discount"], reverse=True)
+    # Сортируем по размеру скидки (больше скидка — выше)
+    def _sort_key(x):
+        m = re.search(r'-(\d+)%', x.get("discount", ""))
+        return -(int(m.group(1)) if m else 0)
+    products.sort(key=_sort_key)
 
-    return discounted
-
-
-def search_discounts_by_keywords(keywords: list[str]) -> list[dict]:
-    """Поиск скидок по списку ключевых слов."""
-    session = _get_session()
-    all_discounted = []
-    seen_ids = set()
-
-    for kw in keywords:
-        slug = _find_slug(kw)
-        if not slug:
-            continue
-        sid = _get_sid(session, slug)
-        if not sid:
-            continue
-        products = _fetch_products(session, sid, max_pages=2)
-        for p in products:
-            pid = p.get("id", "")
-            if pid in seen_ids or not p.get("crossPrice"):
-                continue
-            seen_ids.add(pid)
-            try:
-                price = float(p.get("priceSimple", "0").replace(",", "."))
-                old_price = float(p.get("oldPriceSimple", "0").replace(",", "."))
-            except (ValueError, TypeError):
-                continue
-            if old_price <= 0 or price >= old_price:
-                continue
-
-            all_discounted.append({
-                "name": p.get("title", "").strip(),
-                "price": price,
-                "old_price": old_price,
-                "discount": round((1 - price / old_price) * 100),
-                "discount_rub": round(old_price - price, 2),
-                "by_card": True,
-                "date_to": "",
-                "brand": p.get("brand", ""),
-                "weight": p.get("weight", ""),
-                "image": BASE_URL + p.get("src", "") if p.get("src") else "",
-            })
-
-    all_discounted.sort(key=lambda x: x["discount"], reverse=True)
-    return all_discounted
+    return products
