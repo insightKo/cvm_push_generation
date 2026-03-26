@@ -1,7 +1,8 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY")
 GOOGLE_CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials/service_account.json")
