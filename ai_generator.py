@@ -129,11 +129,11 @@ def _parse_date(d, year_hint=None) -> date | None:
 def calculate_push_schedule(promo: dict) -> list[dict]:
     """Рассчитать расписание push на основе дат акции.
 
-    Правило 10:
-      10.1. один день (duration=0) — 1 push в день акции
-      10.2. два+ дня — 2 push: 1-й день (старт) + последний день (напоминание)
-            Между стартом и напоминанием минимум 1 день разницы.
-            Если разница = 1 день → напоминание = конец.
+    Правила:
+      1 день (duration=0) — 1 push в день акции
+      2 дня (duration=1) — 1 push на старт
+      3-7 дней (неделя) — 2 push: старт + последний день (напоминание)
+      8+ дней (месяц) — push каждую неделю в тот же день недели что и старт
     """
     year_hint = promo.get("Год", date.today().year)
     start = _parse_date(promo.get("Старт акции"), year_hint)
@@ -152,7 +152,7 @@ def calculate_push_schedule(promo: dict) -> list[dict]:
     schedule = []
 
     if duration <= 1:
-        # 10.1: один-два дня — одно сообщение на старт
+        # 1-2 дня — одно сообщение на старт
         schedule.append({
             "date": start.strftime("%d.%m.%Y"),
             "time": "10:00",
@@ -160,26 +160,38 @@ def calculate_push_schedule(promo: dict) -> list[dict]:
             "type": "start",
         })
 
-    else:
-        # 10.2: три+ дня — старт + последний день
-        # Push 1: первый день акции
+    elif duration <= 7:
+        # 3-7 дней (неделя) — старт + напоминание через 1 день после старта
         schedule.append({
             "date": start.strftime("%d.%m.%Y"),
             "time": "10:00",
             "date_obj": start,
             "type": "start",
         })
-        # Push 2: последний день акции (напоминание)
-        # Гарантируем минимум 1 день между push-ами
-        reminder = end
-        if (reminder - start).days < 1:
-            reminder = start + timedelta(days=1)
+        reminder = start + timedelta(days=2)  # через 1 день = на 2-й день после старта
+        if reminder > end:
+            reminder = end
         schedule.append({
             "date": reminder.strftime("%d.%m.%Y"),
             "time": "11:00",
             "date_obj": reminder,
             "type": "reminder",
         })
+
+    else:
+        # 8+ дней (месяц) — каждую неделю в тот же день недели
+        current = start
+        push_num = 0
+        while current <= end:
+            push_type = "start" if push_num == 0 else "reminder"
+            schedule.append({
+                "date": current.strftime("%d.%m.%Y"),
+                "time": "10:00" if push_num == 0 else "11:00",
+                "date_obj": current,
+                "type": push_type,
+            })
+            push_num += 1
+            current += timedelta(days=7)
 
     return schedule
 
@@ -230,6 +242,12 @@ def _extract_benefit(promo: dict) -> dict:
         benefit_value = discount
         benefit_text = f"скидка {discount}"
         return {"type": benefit_type, "value": benefit_value, "text": benefit_text}
+
+    # ── 1b. Ищем "скидку/скидка Xр" в названии ──
+    _discount_rub_match = re.search(r"скидк\w*\s+(\d+)\s*(?:р\.?|₽|руб\.?)", name, re.IGNORECASE)
+    if _discount_rub_match:
+        _val = _discount_rub_match.group(1)
+        return {"type": "discount", "value": f"{_val}₽", "text": f"-{_val}₽"}
 
     # ── 2. Ищем ПРОЦЕНТ в названии/механике ──
     pct_match = re.search(r"(\d+)\s*%", name)
@@ -502,6 +520,526 @@ def _is_online(promo: dict) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Многомерная классификация акций (5 осей)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def classify_promo(promo: dict) -> dict:
+    """Классифицировать акцию по 5 осям.
+
+    Returns dict:
+        activation: "yes" | "no"
+        benefit: "cashback_pct" | "cashback_rub" | "discount_pct" | "discount_rub" | "gift" | "communication" | "present"
+        scope: "all" | "category"
+        check: "no_check" | "check_from"
+        period: "one_day" | "week" | "month"
+        value: "20%" | "300₽" | "50₽" и т.д.
+        check_amount: "1000₽" | "" (если нет чека)
+    """
+    year_hint = promo.get("Год", date.today().year)
+    name = _clean(promo.get("Название промо")).lower()
+    desc = _clean(promo.get("Описание акции")).lower()
+    mech = (_clean(promo.get("Механика")) or _clean(promo.get("Механика для Manzana Online"))).lower()
+    text = f"{name} {desc} {mech}"
+
+    # ── Ось 1: Активация ──
+    activation = "no"
+    coupon_name = _clean(promo.get("Название информационного купона для МП")).lower()
+    coupon_flag = _clean(promo.get("Купон")).lower()
+    if "активируй" in name or "активир" in name or "акцептн" in name:
+        activation = "yes"
+    elif "активируй" in text or "акцептн" in text:
+        activation = "yes"
+    elif "активируй" in coupon_name or "активир" in coupon_name:
+        activation = "yes"
+    elif coupon_flag == "да" and ("активир" in mech or "активация" in mech):
+        activation = "yes"
+
+    # ── Ось 2: Тип выгоды ──
+    # Синонимы кешбэка
+    _cashback_words = ("кешбэк", "кэшбэк", "cashback", "вернём", "вернем",
+                       "возвращаем", "обратно на счет", "на счет", "монетами за")
+
+    has_cashback_word = any(w in text for w in _cashback_words)
+    has_discount_word = "скидк" in text or "купон на скидк" in text
+    has_gift_word = "дарим" in text
+    has_comm_word = any(w in text for w in ("коммуникац", "тематик", "подборка", "рассылка"))
+    has_present_word = "подарок" in text or "подарки за" in text
+
+    # Определяем значение (число + % или ₽)
+    benefit = _extract_benefit(promo)
+    value = benefit.get("value", "")
+    is_pct = "%" in value
+    is_rub = "₽" in value or "р" in value
+
+    if has_comm_word and not has_cashback_word and not has_discount_word and not has_gift_word:
+        benefit_type = "communication"
+    elif has_present_word:
+        benefit_type = "present"
+    elif has_gift_word and not has_cashback_word and not has_discount_word:
+        benefit_type = "gift"
+    elif has_cashback_word:
+        benefit_type = "cashback_pct" if is_pct else "cashback_rub"
+    elif has_discount_word:
+        benefit_type = "discount_pct" if is_pct else "discount_rub"
+    else:
+        # Fallback: число + "монет" без других маркеров = gift
+        if re.search(r'\d+\s*монет', text):
+            benefit_type = "gift"
+        elif is_pct:
+            benefit_type = "discount_pct"
+        elif is_rub:
+            benefit_type = "discount_rub"
+        else:
+            benefit_type = "communication"
+
+    # ── Ось 3: Товарный охват ──
+    cat = _extract_category_details(promo)
+    has_category = bool(cat.get("category") or cat.get("products_text"))
+    # "все товары" / "на покупки" = all
+    _cat_text = (cat.get("category", "") + " " + cat.get("products_text", "")).lower().strip()
+    _all_markers = ("все товары", "все", "на покупки", "на покупки в дикси")
+    # Проверяем: пустое ИЛИ содержит только "все товары"
+    _cat_words = set(_cat_text.split())
+    _is_all = (not _cat_text
+               or _cat_text in _all_markers
+               or _cat_words <= {"все", "товары", "на", "покупки", "в", "дикси"})
+    if _is_all:
+        scope = "all"
+    elif has_category:
+        scope = "category"
+    else:
+        scope = "all"
+
+    # ── Ось 4: Условие чека ──
+    condition_raw = _extract_condition(promo)
+    if condition_raw and re.search(r'\d+', condition_raw):
+        check = "check_from"
+        _m = re.search(r'(\d[\d\s]*)₽?', condition_raw)
+        check_amount = f"{_m.group(1).strip()}₽" if _m else ""
+    else:
+        check = "no_check"
+        check_amount = ""
+
+    # ── Ось 5: Период ──
+    try:
+        start_str = _clean(promo.get("Старт акции"))
+        end_str = _clean(promo.get("Окончание акции"))
+        if start_str and end_str:
+            from datetime import datetime
+            start = _parse_date(start_str)
+            end = _parse_date(end_str)
+            days = (end - start).days
+            if days <= 0:
+                period = "one_day"
+            elif days <= 7:
+                period = "week"
+            else:
+                period = "month"
+        else:
+            period = "week"
+    except Exception:
+        period = "week"
+
+    # ── Ось 6: Контекст (сезон / праздник / погода) ──
+    context_tags = []
+    try:
+        _start_d = _parse_date(_clean(promo.get("Старт акции")), year_hint) if promo.get("Старт акции") else date.today()
+        if not _start_d:
+            _start_d = date.today()
+        _month = _start_d.month
+        _day = _start_d.day
+
+        # Сезон
+        if _month in (12, 1, 2):
+            context_tags.append("зима")
+        elif _month in (3, 4, 5):
+            context_tags.append("весна")
+        elif _month in (6, 7, 8):
+            context_tags.append("лето")
+        else:
+            context_tags.append("осень")
+
+        # Праздники (по дате старта push, проверяем ±3 дня)
+        _holidays = {
+            (1, 1): "новый_год", (1, 2): "новый_год", (1, 3): "новый_год",
+            (1, 7): "рождество",
+            (2, 14): "валентинов_день",
+            (2, 23): "23_февраля",
+            (3, 8): "8_марта",
+            (5, 1): "1_мая", (5, 9): "день_победы",
+            (6, 1): "день_детей", (6, 12): "день_россии",
+            (9, 1): "1_сентября",
+            (11, 4): "день_народного_единства",
+            (12, 31): "новый_год",
+        }
+        # Пасха — подвижная дата, приблизительно
+        _easter_dates = {
+            2025: (4, 20), 2026: (4, 12), 2027: (5, 2), 2028: (4, 16),
+        }
+        _yr = _start_d.year
+        if _yr in _easter_dates:
+            em, ed = _easter_dates[_yr]
+            _holidays[(em, ed)] = "пасха"
+
+        # Проверяем праздники: за 7 дней до и 1 день после
+        for (hm, hd), tag in _holidays.items():
+            try:
+                _holiday_date = date(_start_d.year, hm, hd)
+                _delta = (_holiday_date - _start_d).days
+                if -1 <= _delta <= 7:  # push за неделю до праздника или в сам день
+                    if tag not in context_tags:
+                        context_tags.append(tag)
+            except ValueError:
+                continue
+
+        # Погода / активности по сезону
+        if _month in (5, 6, 7, 8, 9):
+            context_tags.append("шашлыки")
+        if _month in (4, 5):
+            context_tags.append("уборка")  # весенняя уборка
+        if _month in (6, 7, 8):
+            context_tags.append("жара")
+        if _month in (12, 1, 2):
+            context_tags.append("тепло_уют")
+
+    except Exception:
+        context_tags = ["весна"]  # safe fallback
+
+    # ── Онлайн ──
+    is_online = _is_online(promo)
+
+    return {
+        "activation": activation,
+        "benefit": benefit_type,
+        "scope": scope,
+        "check": check,
+        "period": period,
+        "value": value,
+        "check_amount": check_amount,
+        "context": context_tags,
+        "is_online": is_online,
+    }
+
+
+# Фразы для контекста — используются в заголовке и body
+_CONTEXT_TITLE_HINTS = {
+    "пасха": ["🐣Пасхальн", "🥚К Пасхе: "],
+    "новый_год": ["🎄Новогодн", "🎅К Новому году: "],
+    "8_марта": ["🌷К 8 марта: ", "💐Праздничн"],
+    "23_февраля": ["🎖К 23 февраля: ", "💪Мужской "],
+    "1_мая": ["🌸Майск", "☀️Майск"],
+    "день_победы": ["🎗9 мая: "],
+    "валентинов_день": ["❤️К 14 февраля: "],
+}
+
+_CONTEXT_BODY_PHRASES = {
+    "пасха": [
+        " Куличи пекутся, яйца красятся — а монеты копятся 🐣",
+        " Пасхальный стол собирается сам — осталось зайти в ДИКСИ 🥚",
+        " Красим яйца, печём куличи — экономим с умом 🐣",
+        " К пасхальному столу — с выгодой и без суеты 🥚",
+    ],
+    "новый_год": [
+        " Оливье, мандарины и монеты на карте — Новый год близко 🎄",
+        " Ёлка есть, подарки есть — осталось закупиться 🎅",
+        " Праздничный стол сам себя не накроет — но мы поможем 🎄",
+        " Шампанское найдётся, а выгода — уже тут 🥂",
+    ],
+    "8_марта": [
+        " Цветы — отдельно, а продукты — с выгодой 🌷",
+        " 8 марта — праздник, а экономия — привычка 💐",
+        " Весна, тюльпаны и монеты на карте 🌷",
+    ],
+    "23_февраля": [
+        " Мужской праздник — мужская закупка 💪",
+        " Стейк, пиво и монеты — что ещё нужно? 🥩",
+        " 23 февраля — день серьёзных покупок 🎖",
+    ],
+    "зима": [
+        " Под пледом теплее, с монетами — веселее ❄️",
+        " Зимний вечер + горячий ужин = идеально ☕",
+        " Мороз крепчает — запасы пополняются 🧣",
+        " Зима — время сытных ужинов и умных покупок 🏠",
+    ],
+    "весна": [
+        " Весна — значит пора обновить холодильник 🌱",
+        " Природа просыпается, аппетит растёт 🌸",
+        " Авитаминоз? ДИКСИ поможет 🥗",
+        " Весна пришла — пора за витаминами 🌿",
+    ],
+    "лето": [
+        " Мороженое тает, цены — тоже 🍦",
+        " Жара? Холодильник полный — проблема решена 🧊",
+        " Лето, солнце, барбекю — и монеты на карте ☀️",
+        " Ледяной лимонад и горячие скидки 🧊",
+    ],
+    "осень": [
+        " Листья падают — цены тоже 🍂",
+        " Осень — время тёплых супов и умных покупок 🍁",
+        " Дождь за окном, а в корзине — выгода 🌧",
+        " Запасаемся на осень — монеты копятся 🍂",
+    ],
+    "шашлыки": [
+        " Мангал ждёт, угли готовы — осталось мясо 🔥",
+        " Шашлык + друзья + монеты = идеальный выходной 🌳",
+        " На природу? Корзину собрали, монеты начислили 🔥",
+        " Сезон открыт: мясо на мангал, монеты на карту 🍖",
+    ],
+    "уборка": [
+        " Квартира блестит — карта пополняется 🧹",
+        " Весна — из шкафов пыль, на карту — монеты ✨",
+        " Генуборка с кешбэком — двойная чистота 🧽",
+        " Моем, чистим, экономим — весна! 🧹",
+    ],
+    "жара": [
+        " В +30 спасает только холодное и выгодное 🧊",
+        " Жара плавит цены — бери пока холодно в ДИКСИ ❄️",
+        " Водичка, мороженое и монеты на карте 💧",
+    ],
+    "тепло_уют": [
+        " Горячий чай, тёплый плед и полный холодильник 🏠",
+        " Уют = вкусный ужин + экономия ☕",
+        " Когда за окном холод — дома должно быть вкусно 🫖",
+    ],
+    "1_мая": [
+        " Майские — на дачу! Корзину собрали? 🌸",
+        " Праздники = шашлыки + закупка в ДИКСИ 🔥",
+    ],
+    "день_победы": [
+        " К праздничному столу — с уважением и выгодой 🎗",
+        " 9 мая — день памяти и вкусного стола 🎗",
+    ],
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Готовые пары шаблонов (title, body) по комбинации осей
+# Ключ: (activation, benefit, scope, check, period)  — "*" = любое значение
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_PUSH_PAIRS = {
+    # ── NO ACTIVATION + CASHBACK % + CATEGORY ──
+    ("no", "cashback_pct", "category", "*", "*"): [
+        ("{emoji}{value} кешбэк на {products_short}",
+         "{products} {date_context}.{humor} {cta}"),
+        ("{emoji}{value} назад за {products_short}",
+         "{products} {date_context}. Покупаешь — монеты копятся.{humor} {cta}"),
+        ("{emoji}{value} вернём за {products_short}",
+         "{products} {date_context}. {value} вернутся монетами на карту.{humor} {cta}"),
+        ("{emoji}{products_short} + {value} назад",
+         "{products} {date_context}.{humor} {cta}"),
+    ],
+    # ── NO + CASHBACK % + ALL + NO_CHECK ──
+    ("no", "cashback_pct", "all", "no_check", "*"): [
+        ("{emoji}{value} вернём монетами",
+         "{date_context}. Покупаешь — монеты копятся.{humor} {cta}"),
+        ("{emoji}{value} кешбэк с покупки",
+         "{date_context}. {value} вернутся монетами на карту.{humor} {cta}"),
+        ("{emoji}{value} монетами с покупки",
+         "{date_context}.{humor} {cta}"),
+    ],
+    # ── NO + CASHBACK % + ALL + CHECK ──
+    ("no", "cashback_pct", "all", "check_from", "*"): [
+        ("{emoji}{value} с чека от {check_amount}",
+         "{date_context}. Монеты начисляются сразу.{humor} {cta}"),
+        ("{emoji}{value} монетами с чека от {check_amount}",
+         "{date_context}.{humor} {cta}"),
+        ("{emoji}{value} кешбэк за чек от {check_amount}",
+         "{date_context}. {value} вернутся на карту.{humor} {cta}"),
+    ],
+    # ── NO + CASHBACK ₽ + CATEGORY ──
+    ("no", "cashback_rub", "category", "*", "*"): [
+        ("{emoji}+{value} монетами за {products_short}",
+         "{products} {date_context}.{humor} {cta}"),
+        ("{emoji}{value} вернём за {products_short}",
+         "{products} {date_context}. Монеты — на карту.{humor} {cta}"),
+        ("{emoji}{products_short} = +{value} монет",
+         "{products} {date_context}.{humor} {cta}"),
+    ],
+    # ── NO + CASHBACK ₽ + ALL + CHECK ──
+    ("no", "cashback_rub", "all", "check_from", "*"): [
+        ("{emoji}{value} с чека от {check_amount}",
+         "{date_context}. Монеты — сразу на карту.{humor} {cta}"),
+        ("{emoji}+{value} за чек от {check_amount}",
+         "{date_context}.{humor} {cta}"),
+        ("{emoji}{value} вернём за чек от {check_amount}",
+         "{date_context}. Покупай и копи!{humor} {cta}"),
+    ],
+    # ── NO + CASHBACK ₽ + ALL + NO_CHECK ──
+    ("no", "cashback_rub", "all", "no_check", "*"): [
+        ("{emoji}{value} вернём монетами",
+         "{date_context}.{humor} {cta}"),
+        ("{emoji}+{value} монетами с покупки",
+         "{date_context}. Монеты — на карту.{humor} {cta}"),
+    ],
+    # ── NO + DISCOUNT % + CATEGORY ──
+    ("no", "discount_pct", "category", "*", "one_day"): [
+        ("{emoji}-{value} на {products_short}",
+         "{products} — только сегодня!{humor} {cta}"),
+        ("{emoji}{products_short}: -{value}",
+         "{products} — один день!{humor} {cta}"),
+    ],
+    ("no", "discount_pct", "category", "*", "*"): [
+        ("{emoji}-{value} на {products_short}",
+         "{products} {date_context}.{humor} {cta}"),
+        ("{emoji}{products_short} дешевле на {value}",
+         "{products} {date_context}. Цены уже снижены.{humor} {cta}"),
+        ("{emoji}{products_short}: -{value}",
+         "{products} {date_context}.{humor} {cta}"),
+    ],
+    # ── NO + DISCOUNT % + ALL ──
+    ("no", "discount_pct", "all", "*", "*"): [
+        ("{emoji}-{value} на всё",
+         "{date_context}. Цены снижены!{humor} {cta}"),
+        ("{emoji}-{value} с чека",
+         "{date_context}.{humor} {cta}"),
+    ],
+    # ── NO + DISCOUNT ₽ ──
+    ("no", "discount_rub", "*", "*", "*"): [
+        ("{emoji}Скидка {value} по купону",
+         "{date_context}. Покажи купон на кассе.{humor} {cta}"),
+        ("{emoji}Купон на {value} — забирай",
+         "{date_context}. Действует при предъявлении купона.{humor} {cta}"),
+        ("{emoji}Скидка {value} с покупки",
+         "{date_context}.{humor} {cta}"),
+    ],
+    # ── NO + GIFT + ALL + NO_CHECK ──
+    ("no", "gift", "all", "no_check", "*"): [
+        ("{emoji}{value} монетами — дарим!",
+         "{date_context}. Монеты на карте — трать с удовольствием!{humor} {cta}"),
+        ("{emoji}+{value} на карту монетами",
+         "{date_context}. Приятно, когда дарят 😊 {cta}"),
+        ("{emoji}{value} уже на карте",
+         "{date_context}. Монеты ждут — заходи потратить!{humor} {cta}"),
+        ("{emoji}{value} в подарок монетами",
+         "{date_context}.{humor} {cta}"),
+    ],
+    # ── NO + GIFT + ALL + CHECK ──
+    ("no", "gift", "all", "check_from", "*"): [
+        ("{emoji}{value} за чек от {check_amount}",
+         "{date_context}. Монеты начисляются сразу.{humor} {cta}"),
+        ("{emoji}+{value} монетами за чек от {check_amount}",
+         "{date_context}. Покупай — копи — трать!{humor} {cta}"),
+    ],
+    # ── NO + GIFT + CATEGORY ──
+    ("no", "gift", "category", "*", "*"): [
+        ("{emoji}+{value} монетами за {products_short}",
+         "{products} {date_context}. Монеты — на карту.{humor} {cta}"),
+        ("{emoji}{value} дарим за {products_short}",
+         "{products} {date_context}.{humor} {cta}"),
+    ],
+    # ── NO + COMMUNICATION ──
+    ("no", "communication", "category", "*", "*"): [
+        ("{emoji}{products_short} — цены ниже рынка",
+         "{products} {date_context}. Загляни — приятно удивишься!{humor} {cta}"),
+        ("{emoji}{products_short} — цены вау 🤩",
+         "{products} {date_context}.{humor} {cta}"),
+        ("{emoji}{products_short} — цены приятные",
+         "{products} {date_context}. В ДИКСИ сейчас выгодно!{humor} {cta}"),
+        ("{emoji}{products_short} — цены класс 👌",
+         "{products} {date_context}.{humor} {cta}"),
+        ("{emoji}Комфортные цены: {products_short}",
+         "{products} {date_context}. ДИКСИ радует ценами!{humor} {cta}"),
+    ],
+    ("no", "communication", "all", "*", "*"): [
+        ("{emoji}Цены ниже рынка в ДИКСИ",
+         "{date_context}. Загляни — приятно удивишься!{humor} {cta}"),
+        ("{emoji}Цены вау в ДИКСИ 🤩",
+         "{date_context}.{humor} {cta}"),
+        ("{emoji}Комфортные цены в ДИКСИ",
+         "{date_context}. Заходи — порадуешься!{humor} {cta}"),
+    ],
+    # ── NO + PRESENT ──
+    ("no", "present", "*", "*", "*"): [
+        ("{emoji}Подарки за покупку",
+         "{date_context}.{humor} {cta}"),
+        ("{emoji}Подарок за чек",
+         "{date_context}. Покупай и получай подарки!{humor} {cta}"),
+    ],
+    # ── YES + CASHBACK % ──
+    ("yes", "cashback_pct", "category", "*", "*"): [
+        ("{emoji}Активируй {value} кешбэк",
+         "{products} {date_context}. Монеты начисляются сразу после покупки.{humor} {cta}"),
+        ("{emoji}{value} кешбэк — активируй",
+         "{products} {date_context}.{humor} {cta}"),
+        ("{emoji}Включи {value} кешбэк",
+         "{products} {date_context}. Активируй и {value} вернутся монетами.{humor} {cta}"),
+    ],
+    ("yes", "cashback_pct", "all", "*", "*"): [
+        ("{emoji}Активируй {value} кешбэк",
+         "{date_context}. Монеты начисляются сразу после покупки.{humor} {cta}"),
+        ("{emoji}{value} кешбэк — активируй",
+         "{date_context}.{humor} {cta}"),
+    ],
+    # ── YES + CASHBACK ₽ ──
+    ("yes", "cashback_rub", "*", "*", "*"): [
+        ("{emoji}Активируй {value} монетами",
+         "{date_context}. Монеты — сразу на карту после покупки.{humor} {cta}"),
+        ("{emoji}{value} монетами — активируй",
+         "{date_context}.{humor} {cta}"),
+        ("{emoji}Забери {value} монетами",
+         "{date_context}. Активируй и покупай — монеты на карте!{humor} {cta}"),
+    ],
+    # ── YES + DISCOUNT % ──
+    ("yes", "discount_pct", "*", "*", "*"): [
+        ("{emoji}Активируй -{value}",
+         "{products} {date_context}. Цена снизится после активации.{humor} {cta}"),
+        ("{emoji}-{value} — активируй",
+         "{products} {date_context}.{humor} {cta}"),
+    ],
+    # ── YES + DISCOUNT ₽ ──
+    ("yes", "discount_rub", "*", "*", "*"): [
+        ("{emoji}Активируй скидку {value}",
+         "{date_context}. Покажи купон на кассе.{humor} {cta}"),
+        ("{emoji}Скидка {value} — активируй",
+         "{date_context}.{humor} {cta}"),
+    ],
+    # ── YES + GIFT ──
+    ("yes", "gift", "all", "*", "*"): [
+        ("{emoji}Активируй {value} монетами",
+         "{date_context}. Монеты ждут на карте!{humor} {cta}"),
+        ("{emoji}{value} монетами — активируй!",
+         "{date_context}. Активируй и трать в магазине.{humor} {cta}"),
+        ("{emoji}Забери {value} монетами",
+         "{date_context}. Активируй — монеты на карте!{humor} {cta}"),
+        ("{emoji}{value} ждут активации",
+         "{date_context}. Активируй и не забудь потратить!{humor} {cta}"),
+    ],
+    ("yes", "gift", "category", "*", "*"): [
+        ("{emoji}Активируй {value} за {products_short}",
+         "{products} {date_context}. Монеты начисляются после покупки.{humor} {cta}"),
+        ("{emoji}{value} за {products_short} — активируй",
+         "{products} {date_context}.{humor} {cta}"),
+    ],
+    # ── НАПОМИНАНИЯ (reminder) ──
+    ("*", "*", "*", "*", "reminder"): [
+        ("⏳{value} — заканчивается",
+         "{products} {date_context}. Не пропусти!{humor} {cta}"),
+        ("🏃Успей: {value} {date_context}",
+         "{products} Последний шанс!{humor} {cta}"),
+        ("⚡Последний шанс: {value}",
+         "{products} {date_context}. Успей забрать!{humor} {cta}"),
+        ("🔔Напоминаем: {value}",
+         "{products} {date_context}. Не забудь!{humor} {cta}"),
+    ],
+}
+
+
+def _match_pairs(key: tuple) -> list[tuple]:
+    """Найти пары шаблонов по ключу с поддержкой wildcard '*'."""
+    results = []
+    for tpl_key, tpl_pairs in _PUSH_PAIRS.items():
+        match = True
+        for k, t in zip(key, tpl_key):
+            if t != "*" and k != t:
+                match = False
+                break
+        if match:
+            results.extend(tpl_pairs)
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Расшифровка товаров по категориям (правило 16)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -692,7 +1230,7 @@ _CATEGORY_EMOJI = {
     "перчатк": "🧤", "шапк": "🧣", "шарф": "🧣",
     # ══ Бытовая химия / гигиена ══
     "хими": "🧼", "бытов": "🧼", "стир": "🧼", "чист": "✨",
-    "обув": "👟", "мыл": "🧴", "шампун": "💇", "гигиен": "🧴",
+    "обув": "👟", "мыл": "🧴", "шампун": "💇", "гигиен": "🧴", "зуб": "🪥",
     "порош": "🧼", "средств": "🧹", "губк": "🧽",
     # ══ Мясо и птица ══
     "мясо": "🥩", "говядин": "🥩", "свинин": "🥩", "фарш": "🥩",
@@ -1718,6 +2256,9 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
 
     # Короткая версия details для заголовка (первые 1-2 слова)
     details_short = details.split(",")[0].strip()[:20]
+    # Не вставляем "Все товары" в заголовок
+    if details_short.lower() in ("все товары", "все"):
+        details_short = ""
 
     # ── Извлечение условия (мин. чек, кол-во шт. и т.д.) ──
     condition_raw = _extract_condition(promo)
@@ -1781,7 +2322,8 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
                 cta = creative_cta
                 break
     elif needs_act:
-        cta = "АКТИВИРУЙ акцию"
+        # Не дублируем "активируй" — если в заголовке уже будет, в body даём другой CTA
+        cta = "Забегай в ДИКСИ" if not is_online else "Забегай в ДИКСИ или закажи онлайн"
     elif is_online:
         cta = "Забегай в ДИКСИ или закажи онлайн"
     else:
@@ -1800,6 +2342,8 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
         "details": details,
         "details_short": details_short,
         "end": end_str or "конца акции",
+        "date": end_str or "конца акции",
+        "products": details,
         "date_context": date_context or "сегодня",
         "condition": condition,
         "condition_on": condition_on,
@@ -1954,59 +2498,43 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
                 fill["situation"] = sit
                 break
 
-        # Выбираем пулы ПАР (заголовок + текст, грамматически согласованные)
+        # ═══ НОВАЯ СИСТЕМА: готовые пары по 5 осям classify_promo ═══
+        cl = classify_promo(promo)
+        _act = cl["activation"]
+        _ben = cl["benefit"]
+        _sco = cl["scope"]
+        _chk = cl["check"]
+        _per = cl["period"]
+        _ctx = cl.get("context", [])
+
+        # Подбираем готовые пары (title, body)
         if push_type == "reminder":
-            if benefit["type"] == "cashback":
-                pairs_pool = list(_PAIRS_REMIND_CASHBACK)
-            elif benefit["type"] == "discount":
-                pairs_pool = list(_PAIRS_REMIND_DISCOUNT)
-            elif benefit["type"] == "bonus":
-                pairs_pool = list(_PAIRS_REMIND_BONUS)
-            else:
-                pairs_pool = list(_PAIRS_REMIND_GENERAL)
+            pairs_pool = _match_pairs(("*", "*", "*", "*", "reminder"))
         else:
-            if benefit["type"] == "cashback":
-                pairs_pool = list(_PAIRS_START_CASHBACK)
-            elif benefit["type"] == "discount":
-                pairs_pool = list(_PAIRS_START_DISCOUNT)
-            elif benefit["type"] == "bonus":
-                if condition_check:
-                    pairs_pool = list(_PAIRS_START_BONUS_WITH_CHECK)
-                else:
-                    pairs_pool = list(_PAIRS_START_BONUS)
-            else:
-                pairs_pool = list(_PAIRS_START_GENERAL)
+            pairs_pool = _match_pairs((_act, _ben, _sco, _chk, _per))
+            if not pairs_pool:
+                pairs_pool = _match_pairs((_act, _ben, _sco, _chk, "*"))
+            if not pairs_pool:
+                pairs_pool = _match_pairs((_act, _ben, "*", "*", "*"))
+            if not pairs_pool:
+                pairs_pool = [("{emoji}{value} {date_context}", "{products} {date_context}.{humor} {cta}")]
 
-            # Подмешиваем ситуационные пары (обувь, шоколад и т.д.)
-            # для стартовых push — они дают разнообразие и юмор
-            cat_lower = (cat["category"] + " " + cat["products_text"]).lower()
-            for kw, sit_pairs in _SITUATIONAL_PAIRS.items():
-                if kw in cat_lower:
-                    pairs_pool.extend(sit_pairs)
+        # Пятничные/выходные пары — добавляем
+        if push_type != "reminder":
+            if is_friday:
+                pairs_pool.append(("{emoji}Пятничная выгода {value}",
+                                   "{products} {date_context}.{humor} {cta}"))
+            elif is_weekend:
+                pairs_pool.append(("{emoji}Выходные + {value}",
+                                   "{products} {date_context}.{humor} {cta}"))
 
-            # Пятничные / выходные пары — подмешиваем для атмосферы
-            if is_friday and benefit["type"] == "cashback":
-                pairs_pool.extend([
-                    ("{emoji}Пятничный кешбэк {value}",
-                     "{details} {date_context}. {condition}Лучший повод закупиться к выходным!{promo_code} {purchase_ctx}{cta}"),
-                    ("{emoji}Пятница + {value} кешбэк",
-                     "{details} {date_context}. {condition}Выходные начинаются с выгоды!{promo_code} {purchase_ctx}{cta}"),
-                ])
-            elif is_friday and benefit["type"] == "discount":
-                pairs_pool.extend([
-                    ("{emoji}Пятничная скидка {value}",
-                     "{details} {date_context}. {condition}Закупаемся к выходным!{promo_code} {purchase_ctx}{cta}"),
-                ])
-            elif is_weekend and benefit["type"] == "cashback":
-                pairs_pool.extend([
-                    ("{emoji}Выходной + кешбэк {value}",
-                     "{details} {date_context}. {condition}Выходные с выгодой!{promo_code} {purchase_ctx}{cta}"),
-                ])
-            elif is_weekend and benefit["type"] == "discount":
-                pairs_pool.extend([
-                    ("{emoji}Выходная скидка {value}",
-                     "{details} {date_context}. {condition}Время закупок!{promo_code} {purchase_ctx}{cta}"),
-                ])
+        fill["products_short"] = details_short
+        # Для scope=all: не вставляем "Все товары", а пишем "" или "на любые товары"
+        _details_lower_clean = details.lower().strip()
+        if _details_lower_clean in ("все товары", "все", ""):
+            fill["products"] = ""
+        else:
+            fill["products"] = details
 
         random.shuffle(pairs_pool)
 

@@ -91,7 +91,7 @@ div[data-testid="stRadio"] > div > label > div:first-child {
 _nav_page = st.sidebar.radio(
     "Навигация",
     ["📅 План", "🔧 Условия акций", "✨ Генерация PUSH",
-     "📝 Правила генерации", "🔗 Deeplinks"],
+     "📋 Типы акций", "📝 Правила генерации", "🔗 Deeplinks"],
     label_visibility="collapsed",
 )
 
@@ -803,7 +803,7 @@ elif _nav_page == "✨ Генерация PUSH":
             st.caption(f"Акций без push-сообщений: {len(df_gen)}")
 
             # Вкладки массовая / по одной
-            _tab_mass, _tab_single = st.tabs(["⚡ Массовая генерация", "🎯 По одной акции"])
+            _tab_single, _tab_mass = st.tabs(["🎯 По одной акции", "⚡ Массовая генерация"])
 
             # ── МАССОВАЯ ─────────────────────────────────────────────
             with _tab_mass:
@@ -869,19 +869,17 @@ elif _nav_page == "✨ Генерация PUSH":
                         promo_num = _norm_num(promo.get("НОМЕР"))
                         promo_name = str(promo.get("Название промо", ""))
 
-                        with st.container(border=True):
-                            ccol1, ccol2 = st.columns([0.05, 0.95])
-                            with ccol1:
-                                checked = st.checkbox(
-                                    "",
-                                    value=st.session_state.mass_checked.get(i, False),
-                                    key=f"mass_check_{i}",
-                                    label_visibility="collapsed",
-                                )
-                                st.session_state.mass_checked[i] = checked
-                            with ccol2:
-                                st.markdown(f"**{promo_num} — {promo_name}**")
-
+                        _check_col, _exp_col = st.columns([0.05, 0.95])
+                        with _check_col:
+                            checked = st.checkbox(
+                                "",
+                                value=st.session_state.mass_checked.get(i, False),
+                                key=f"mass_check_{i}",
+                                label_visibility="collapsed",
+                            )
+                            st.session_state.mass_checked[i] = checked
+                        with _exp_col:
+                          with st.expander(f"**{promo_num} — {promo_name}**", expanded=False):
                             pushes = result.get("pushes", [])
                             for p_idx, push_data in enumerate(pushes):
                                 push_num = push_data.get("push_number", p_idx + 1)
@@ -897,12 +895,28 @@ elif _nav_page == "✨ Генерация PUSH":
 
                                 pcol1, pcol2, pcol3 = st.columns(3)
                                 with pcol1:
-                                    push_date_val = st.text_input(
+                                    # Парсим дату из строки в date объект
+                                    _date_str = push_data.get("date", "")
+                                    _date_default = None
+                                    if _date_str:
+                                        from datetime import datetime as _dt_cls
+                                        for _fmt in ("%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d.%m."):
+                                            try:
+                                                _date_default = _dt_cls.strptime(_date_str, _fmt).date()
+                                                break
+                                            except ValueError:
+                                                continue
+                                    if not _date_default:
+                                        from datetime import date as _d_cls
+                                        _date_default = _d_cls.today()
+                                    push_date_obj = st.date_input(
                                         "Дата",
-                                        value=push_data.get("date", ""),
+                                        value=_date_default,
                                         key=f"mass_date_{i}_{p_idx}",
                                         label_visibility="collapsed",
+                                        format="DD.MM.YYYY",
                                     )
+                                    push_date_val = push_date_obj.strftime("%d.%m.%Y")
                                 with pcol2:
                                     push_time_val = st.text_input(
                                         "Время",
@@ -1197,11 +1211,26 @@ elif _nav_page == "✨ Генерация PUSH":
                             # Date/time/deeplink inputs
                             scol1, scol2, scol3 = st.columns(3)
                             with scol1:
-                                s_date = st.text_input(
+                                _sd_str = push_data.get("date", "")
+                                _sd_default = None
+                                if _sd_str:
+                                    from datetime import datetime as _dt_cls
+                                    for _fmt in ("%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%d.%m."):
+                                        try:
+                                            _sd_default = _dt_cls.strptime(_sd_str, _fmt).date()
+                                            break
+                                        except ValueError:
+                                            continue
+                                if not _sd_default:
+                                    from datetime import date as _d_cls
+                                    _sd_default = _d_cls.today()
+                                s_date_obj = st.date_input(
                                     "Дата",
-                                    value=push_data.get("date", ""),
+                                    value=_sd_default,
                                     key=f"single_date_{p_idx}",
+                                    format="DD.MM.YYYY",
                                 )
+                                s_date = s_date_obj.strftime("%d.%m.%Y")
                             with scol2:
                                 s_time = st.text_input(
                                     "Время",
@@ -1303,6 +1332,161 @@ elif _nav_page == "✨ Генерация PUSH":
                                     st.error(f"Ошибка сохранения: {e}")
                             else:
                                 st.warning("Выберите хотя бы один вариант")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  PAGE: 📋 Типы акций
+# ═════════════════════════════════════════════════════════════════════════════
+
+elif _nav_page == "📋 Типы акций":
+    from ai_generator import classify_promo, _PUSH_PAIRS, _CONTEXT_BODY_PHRASES
+
+    _types_tab1, _types_tab2, _types_tab3 = st.tabs(["📊 Классификация акций", "✏️ Шаблоны", "📖 Оси"])
+
+    # ── TAB 1: Классификация акций ──
+    with _types_tab1:
+        _sid_types = st.session_state.get("sheet_session_id", None) or spreadsheet_id
+        try:
+            df_cvm_types = load_cvm_data(_sid_types)
+            if not df_cvm_types.empty:
+                _type_rows = []
+                for _, row in df_cvm_types.iterrows():
+                    promo_dict = row.to_dict()
+                    num = str(promo_dict.get("НОМЕР", "")).strip()
+                    name = str(promo_dict.get("Название промо", "")).strip()
+                    if not num or not name or num == "nan":
+                        continue
+                    cl = classify_promo(promo_dict)
+                    _type_rows.append({
+                        "№": num,
+                        "Акция": name[:45],
+                        "Акт": "✅" if cl["activation"] == "yes" else "",
+                        "Выгода": cl["benefit"],
+                        "Охват": cl["scope"],
+                        "Чек": cl["check_amount"] if cl["check"] == "check_from" else "",
+                        "Период": cl["period"],
+                        "Значение": cl["value"],
+                        "Контекст": ", ".join(cl["context"][:2]),
+                        "🌐": "✅" if cl["is_online"] else "",
+                    })
+                if _type_rows:
+                    df_types = pd.DataFrame(_type_rows)
+                    # Фильтр по типу выгоды
+                    _benefit_filter = st.multiselect(
+                        "Фильтр по типу выгоды",
+                        df_types["Выгода"].unique().tolist(),
+                        default=df_types["Выгода"].unique().tolist(),
+                        key="types_benefit_filter",
+                    )
+                    df_types_filtered = df_types[df_types["Выгода"].isin(_benefit_filter)]
+                    st.dataframe(df_types_filtered, use_container_width=True, hide_index=True, height=600)
+                    st.caption(f"Показано: {len(df_types_filtered)} из {len(_type_rows)}")
+        except Exception as e:
+            st.warning(f"Ошибка загрузки: {e}")
+
+    # ── TAB 2: Шаблоны ──
+    with _types_tab2:
+        st.caption("Готовые пары (заголовок + body) — подбираются по комбинации осей")
+
+        _benefit_names = {
+            "cashback_pct": "💰 Кешбэк %", "cashback_rub": "💎 Кешбэк ₽",
+            "discount_pct": "🏷 Скидка %", "discount_rub": "🎫 Скидка ₽",
+            "gift": "🎁 Предначисление", "communication": "📢 Коммуникация",
+            "present": "🎄 Подарок",
+        }
+        for benefit_code, benefit_label in _benefit_names.items():
+            with st.expander(benefit_label, expanded=False):
+                _found_any = False
+                for key, pairs in _PUSH_PAIRS.items():
+                    if key[1] == benefit_code or key[1] == "*":
+                        _act_label = "🔑 активация" if key[0] == "yes" else ""
+                        _scope_label = f"📦 {key[2]}" if key[2] != "*" else ""
+                        _check_label = f"💳 {key[3]}" if key[3] != "*" else ""
+                        _per_label = f"📅 {key[4]}" if key[4] != "*" else ""
+                        _tags = " ".join(filter(None, [_act_label, _scope_label, _check_label, _per_label]))
+                        if _tags:
+                            st.markdown(f"**{_tags}**")
+                        for i, (title, body) in enumerate(pairs, 1):
+                            st.markdown(f"{i}. **`{title}`**")
+                            st.markdown(f"   `{body}`")
+                        st.markdown("---")
+                        _found_any = True
+                if not _found_any:
+                    st.caption("Нет шаблонов")
+
+        with st.expander("⏰ Напоминания (reminder)", expanded=False):
+            for key, pairs in _PUSH_PAIRS.items():
+                if key[4] == "reminder":
+                    for i, (title, body) in enumerate(pairs, 1):
+                        st.markdown(f"{i}. **`{title}`**")
+                        st.markdown(f"   `{body}`")
+
+        with st.expander("🗓 Контекстные фразы (праздники/сезон)", expanded=False):
+            for tag, phrases in _CONTEXT_BODY_PHRASES.items():
+                st.markdown(f"**{tag}:** {' | '.join(phrases[:2])}")
+
+    # ── TAB 3: Оси ──
+    with _types_tab3:
+        st.markdown("#### Ось 1: Активация")
+        st.dataframe(pd.DataFrame([
+            {"Код": "no", "Значение": "Без активации", "Определение": "По умолчанию — акция работает автоматически"},
+            {"Код": "yes", "Значение": "Нужна активация", "Определение": "Ключевые слова: «активируй», «акцептн»"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("#### Ось 2: Тип выгоды")
+        st.dataframe(pd.DataFrame([
+            {"Код": "cashback_pct", "Тип": "Кешбэк X%", "Ключевые слова": "кешбэк / кэшбэк / вернём / возвращаем / обратно на счет + %", "Пример": "20% кешбэк на овощи"},
+            {"Код": "cashback_rub", "Тип": "Кешбэк X₽", "Ключевые слова": "кешбэк / вернём / возвращаем + ₽/р.", "Пример": "Вернём 300₽ с чека"},
+            {"Код": "discount_pct", "Тип": "Скидка X%", "Ключевые слова": "скидка / скидки + %", "Пример": "-10% на зубную пасту"},
+            {"Код": "discount_rub", "Тип": "Скидка X₽", "Ключевые слова": "скидка / купон на скидку + ₽/р.", "Пример": "Скидка 50₽ по купону"},
+            {"Код": "gift", "Тип": "Предначисление", "Ключевые слова": "«дарим» + число, или число + «монет» без маркеров кешбэка/скидки", "Пример": "Дарим 150₽ монетами"},
+            {"Код": "communication", "Тип": "Коммуникация", "Ключевые слова": "коммуникац / тематик / подборка / рассылка", "Пример": "Детские товары — цены снижены"},
+            {"Код": "present", "Тип": "Подарок", "Ключевые слова": "подарок / подарки за", "Пример": "Подарки за покупку"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("#### Ось 3: Товарный охват")
+        st.dataframe(pd.DataFrame([
+            {"Код": "all", "Значение": "Все товары", "Определение": "Нет категории / «все товары» / «на покупки»"},
+            {"Код": "category", "Значение": "Категория/список", "Определение": "Конкретная категория: овощи, химия, алкоголь и т.д."},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("#### Ось 4: Условие чека")
+        st.dataframe(pd.DataFrame([
+            {"Код": "no_check", "Значение": "Без ограничения", "Определение": "Нет минимальной суммы чека"},
+            {"Код": "check_from", "Значение": "От X₽", "Определение": "«от 1000р» / «чек от» / «с 1500р»"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("#### Ось 5: Период")
+        st.dataframe(pd.DataFrame([
+            {"Код": "one_day", "Значение": "1 день", "Push": "1 push в день акции"},
+            {"Код": "week", "Значение": "2-7 дней", "Push": "Старт + напоминание через 1 день после старта"},
+            {"Код": "month", "Значение": "8+ дней", "Push": "Каждую неделю в тот же день недели"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("#### Ось 6: Контекст (автоматически по дате)")
+        st.dataframe(pd.DataFrame([
+            {"Тег": "зима / весна / лето / осень", "Описание": "Сезон определяется по месяцу старта акции"},
+            {"Тег": "пасха", "Описание": "За 7 дней до Пасхи (2026: 12 апреля)"},
+            {"Тег": "новый_год", "Описание": "За 7 дней до 31 декабря"},
+            {"Тег": "8_марта", "Описание": "За 7 дней до 8 марта"},
+            {"Тег": "23_февраля", "Описание": "За 7 дней до 23 февраля"},
+            {"Тег": "шашлыки", "Описание": "Май — сентябрь"},
+            {"Тег": "уборка", "Описание": "Апрель — май (весенняя уборка)"},
+            {"Тег": "жара", "Описание": "Июнь — август"},
+            {"Тег": "тепло_уют", "Описание": "Декабрь — февраль"},
+        ]), use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("""
+**Синонимы кешбэка:** кешбэк = кэшбэк = вернём = возвращаем = обратно на счет
+
+**Определение gift:** «дарим» + число, или число + «монет» без маркеров кешбэка/скидки
+
+**Расписание push:**
+- 1 день → 1 push
+- 2-7 дней → старт + напоминание на 2-й день
+- 8+ дней → каждую неделю в тот же день недели
+""")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
