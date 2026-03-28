@@ -385,17 +385,22 @@ if _nav_page == "📅 План":
                 msg = str(pr.get("Номер msg", "")).strip()
                 if not pnum or not pdate_str or pdate_str.lower() in ("nan", "none", ""):
                     continue
-                # Parse date to date object
+                # Parse date to date object (supports DD.MM.YYYY, DD.MM., YYYY-MM-DD)
                 _pyear = str(pr.get("Год", "")).strip()
                 _push_yr = int(_pyear) if _pyear.isdigit() and int(_pyear) > 2000 else sel_year
                 try:
-                    _dp = pdate_str.rstrip(".").split(".")
-                    if len(_dp) >= 3 and _dp[2].isdigit() and int(_dp[2]) > 2000:
-                        _pdate_obj = _date_cls(int(_dp[2]), int(_dp[1]), int(_dp[0]))
-                    elif len(_dp) >= 2:
-                        _pdate_obj = _date_cls(_push_yr, int(_dp[1]), int(_dp[0]))
+                    if "-" in pdate_str and len(pdate_str) >= 10:
+                        # ISO format: 2026-04-10
+                        _iso = pdate_str.split("-")
+                        _pdate_obj = _date_cls(int(_iso[0]), int(_iso[1]), int(_iso[2][:2]))
                     else:
-                        continue
+                        _dp = pdate_str.rstrip(".").split(".")
+                        if len(_dp) >= 3 and _dp[2].isdigit() and int(_dp[2]) > 2000:
+                            _pdate_obj = _date_cls(int(_dp[2]), int(_dp[1]), int(_dp[0]))
+                        elif len(_dp) >= 2:
+                            _pdate_obj = _date_cls(_push_yr, int(_dp[1]), int(_dp[0]))
+                        else:
+                            continue
                 except (ValueError, IndexError):
                     continue
                 key = (pnum, _pdate_obj)
