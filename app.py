@@ -95,6 +95,11 @@ _nav_page = st.sidebar.radio(
     label_visibility="collapsed",
 )
 
+if st.sidebar.button("🔄 Обновить данные из Google", key="global_refresh", use_container_width=True):
+    load_cvm_data.clear()
+    load_push_data.clear()
+    st.rerun()
+
 with st.sidebar.expander("⚙️ Настройки", expanded=False):
     spreadsheet_id = st.text_input(
         "Spreadsheet ID",

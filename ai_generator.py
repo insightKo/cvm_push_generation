@@ -54,16 +54,34 @@ def find_best_deeplink(category_text: str) -> dict | None:
         r = exact.iloc[0]
         return {"id": int(r["Id"]), "category": r["КАТЕГОРИЯ"], "deeplink": r["deeplink"]}
 
-    # 2. Поиск по вхождению ключевых слов
+    # 2. Поиск по вхождению ключевых слов с синонимами
+    _synonyms = {
+        "детск": ["детей", "детск", "малыш", "ребён", "ребенк"],
+        "детей": ["детск", "детей", "малыш"],
+        "зоо": ["животн", "зоо", "корм", "кошач", "собач"],
+        "животн": ["зоо", "животн", "корм"],
+        "алкогол": ["вино", "пиво", "водк", "алкогол", "крепк"],
+        "химии": ["бытов", "хими", "моющ", "стирк"],
+        "бытов": ["хими", "бытов", "моющ"],
+        "пп": ["правильн", "здоров", "диет", "фитнес"],
+        "готов": ["готов", "перекус", "сэндвич"],
+    }
     keywords = re.findall(r"[а-яёa-z]{3,}", query)
+    # Расширяем keywords синонимами
+    expanded_kw = set(keywords)
+    for kw in keywords:
+        for syn_key, syn_vals in _synonyms.items():
+            if syn_key in kw or kw in syn_key:
+                expanded_kw.update(syn_vals)
+
     best_score = 0
     best_row = None
     for _, r in df.iterrows():
         cat = r["_search"]
         score = 0
-        for kw in keywords:
+        for kw in expanded_kw:
             if kw in cat:
-                score += len(kw)  # Длинные слова = больше вес
+                score += len(kw)
         if score > best_score:
             best_score = score
             best_row = r
@@ -428,6 +446,13 @@ def _extract_category_details(promo: dict) -> dict:
     coupon_text = _clean(promo.get("Текст на информационном купоне / слип-чеке"))
     button = _clean(promo.get("Кнопка"))
     mech = _clean(promo.get("Механика")) or _clean(promo.get("Механика для Manzana Online"))
+
+    # Если категория — числовые коды, очищаем
+    if category_raw:
+        _cleaned_cat = re.sub(r"[\d\s\n]+", "", category_raw).strip()
+        if not _cleaned_cat:
+            # Категория состоит только из цифр/пробелов/переводов строки — это коды товаров
+            category_raw = ""
 
     # Если категория — просто "список" или пусто, извлекаем из названия/купона
     category = category_raw
@@ -821,13 +846,13 @@ _PUSH_PAIRS = {
     # ── NO ACTIVATION + CASHBACK % + CATEGORY ──
     ("no", "cashback_pct", "category", "*", "*"): [
         ("{emoji}{value} кешбэк на {products_short}",
-         "{products} {date_context}.{humor} {cta}"),
+         "{date_context}. Покупаешь — монеты копятся.{humor} {cta}"),
         ("{emoji}{value} назад за {products_short}",
-         "{products} {date_context}. Покупаешь — монеты копятся.{humor} {cta}"),
+         "{date_context}. {value} вернутся монетами на карту.{humor} {cta}"),
         ("{emoji}{value} вернём за {products_short}",
-         "{products} {date_context}. {value} вернутся монетами на карту.{humor} {cta}"),
+         "{date_context}.{humor} {cta}"),
         ("{emoji}{products_short} + {value} назад",
-         "{products} {date_context}.{humor} {cta}"),
+         "{date_context}. Монеты — сразу на карту.{humor} {cta}"),
     ],
     # ── NO + CASHBACK % + ALL + NO_CHECK ──
     ("no", "cashback_pct", "all", "no_check", "*"): [
@@ -1011,7 +1036,16 @@ _PUSH_PAIRS = {
         ("{emoji}{value} за {products_short} — активируй",
          "{products} {date_context}.{humor} {cta}"),
     ],
-    # ── НАПОМИНАНИЯ (reminder) ──
+    # ── НАПОМИНАНИЯ: коммуникация (без value, без urgency) ──
+    ("no", "communication", "*", "*", "reminder"): [
+        ("{emoji}{products_short} — обновляем",
+         "{products} {date_context}. Загляни — обновили ассортимент!{humor} {cta}"),
+        ("{emoji}{products_short} — напоминаем",
+         "{products} {date_context}. Цены всё ещё радуют!{humor} {cta}"),
+        ("{emoji}{products_short} ждут в ДИКСИ",
+         "{products} {date_context}.{humor} {cta}"),
+    ],
+    # ── НАПОМИНАНИЯ (reminder) — акции с выгодой ──
     ("*", "*", "*", "*", "reminder"): [
         ("⏳{value} — заканчивается",
          "{products} {date_context}. Не пропусти!{humor} {cta}"),
@@ -1026,16 +1060,34 @@ _PUSH_PAIRS = {
 
 
 def _match_pairs(key: tuple) -> list[tuple]:
-    """Найти пары шаблонов по ключу с поддержкой wildcard '*'."""
-    results = []
+    """Найти пары шаблонов по ключу с поддержкой wildcard '*'.
+
+    Приоритет: более специфичные (меньше *) идут первыми.
+    Если есть специфичный матч — общий wildcard НЕ добавляется.
+    """
+    matches = []
     for tpl_key, tpl_pairs in _PUSH_PAIRS.items():
         match = True
+        specificity = 0
         for k, t in zip(key, tpl_key):
             if t != "*" and k != t:
                 match = False
                 break
+            if t != "*":
+                specificity += 1
         if match:
-            results.extend(tpl_pairs)
+            matches.append((specificity, tpl_pairs))
+
+    if not matches:
+        return []
+
+    # Если есть специфичные матчи (specificity > 0), не берём полностью wildcard
+    max_spec = max(s for s, _ in matches)
+    results = []
+    for spec, pairs in matches:
+        # Берём только матчи с максимальной или близкой специфичностью
+        if spec >= max_spec - 1:
+            results.extend(pairs)
     return results
 
 
@@ -2509,7 +2561,12 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
 
         # Подбираем готовые пары (title, body)
         if push_type == "reminder":
-            pairs_pool = _match_pairs(("*", "*", "*", "*", "reminder"))
+            # Сначала ищем специфичные reminder для этого типа акции
+            pairs_pool = _match_pairs((_act, _ben, _sco, _chk, "reminder"))
+            if not pairs_pool:
+                pairs_pool = _match_pairs((_act, _ben, "*", "*", "reminder"))
+            if not pairs_pool:
+                pairs_pool = _match_pairs(("*", "*", "*", "*", "reminder"))
         else:
             pairs_pool = _match_pairs((_act, _ben, _sco, _chk, _per))
             if not pairs_pool:
@@ -2548,12 +2605,17 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
             pair = pairs_pool[vi % len(pairs_pool)]
             title_tmpl, body_tmpl = pair
 
+            # Антидублирование: если продукт в заголовке, убираем из body
+            fill_body = dict(fill_vi)
+            if ("{products_short}" in title_tmpl or "{products}" in title_tmpl) and "{products}" in body_tmpl:
+                fill_body["products"] = ""
+
             try:
                 title = title_tmpl.format(**fill_vi)
             except (KeyError, IndexError):
                 title = title_tmpl
             try:
-                body = body_tmpl.format(**fill_vi)
+                body = body_tmpl.format(**fill_body)
             except (KeyError, IndexError):
                 body = body_tmpl
 
@@ -2720,6 +2782,9 @@ def build_prompt(promo: dict, rules: str, num_variants: int,
 17. НЕ ПЕРЕСКАЗЫВАЙ ТЕКСТ КУПОНА. Поле «Текст на информационном купоне» — это юридический текст для купона.
     Из него бери ТОЛЬКО: суммы, даты, условия. НЕ копируй фразы, НЕ пересказывай.
 
+18. НЕ ВСТАВЛЯЙ КОДЫ ТОВАРОВ, АРТИКУЛЫ, ID. Если в данных есть числовые коды (SKU, артикулы, ID категорий) —
+    НЕ включай их в текст push. Только человекочитаемые названия товаров и категорий.
+
 {f'''
 ДОПОЛНИТЕЛЬНЫЕ ПРАВИЛА ОТ ПОЛЬЗОВАТЕЛЯ:
 {rules}
@@ -2826,9 +2891,15 @@ def _build_promo_conditions_prompt(promo: dict, examples: list[dict]) -> str:
     nastroyka = _clean(promo.get("Настройка", ""))
     skip_coupon = nastroyka.lower() == "нет"
 
-    # Поиск подходящего deeplink из справочника
+    # Поиск подходящего deeplink из справочника — ищем по названию, категории, описанию
     deeplink_hint = ""
+    _cat_raw = _clean(promo.get("Категория", ""))
+    _desc_raw = _clean(promo.get("Описание акции", ""))
     dl = find_best_deeplink(name)
+    if not dl and _cat_raw:
+        dl = find_best_deeplink(_cat_raw)
+    if not dl and _desc_raw:
+        dl = find_best_deeplink(_desc_raw)
     if dl:
         deeplink_hint = f"\nПОДХОДЯЩИЙ DEEPLINK ИЗ СПРАВОЧНИКА:\n  Категория: {dl['category']} (ID: {dl['id']})\n  Deeplink: {dl['deeplink']}\n  Используй этот deeplink в поле «Кнопка» если акция на эту категорию.\n"
 
