@@ -61,6 +61,27 @@ _MULTI_SLUGS = {
     "салфетк": ["tovary-dlya-detey", "gigiena-i-kosmetika"],
     "подгузник": ["tovary-dlya-detey"],
     "пасх": ["molochnye-produkty-yaytsa", "khleb-i-vypechka", "bakaleya"],
+    "кулич": ["khleb-i-vypechka", "bakaleya", "molochnye-produkty-yaytsa"],
+    # Тематические подборки — какие товары нужны для рецепта/повода
+    "оливье": ["myasnaya-gastronomiya", "ovoshchi-frukty", "konservy", "sousy-spetsii"],
+    "шуба": ["ryba-moreprodukty-ikra", "ovoshchi-frukty", "sousy-spetsii"],
+    "крабов": ["ryba-moreprodukty-ikra", "ovoshchi-frukty", "konservy"],
+    "сморреброд": ["myasnaya-gastronomiya", "syry", "khleb-i-vypechka", "ryba-moreprodukty-ikra"],
+    "коктейл": ["krepkiy-alkogol", "voda-soki-napitki", "ovoshchi-frukty"],
+    "постим": ["ovoshchi-frukty", "bakaleya", "konservy"],
+    "пп": ["dlya-zdorovogo-pitaniya", "ovoshchi-frukty"],
+    "правильное питание": ["dlya-zdorovogo-pitaniya", "ovoshchi-frukty"],
+    "тонус": ["voda-soki-napitki", "chay-kofe-kakao", "dlya-zdorovogo-pitaniya"],
+    "энерги": ["voda-soki-napitki", "chay-kofe-kakao", "dlya-zdorovogo-pitaniya"],
+    "эстетик": ["vino-i-igristoe", "syry", "myasnaya-gastronomiya"],
+    "вино и эстетик": ["vino-i-igristoe", "syry", "myasnaya-gastronomiya"],
+    "ужин": ["myaso-ptitsa", "ovoshchi-frukty", "gotovaya-eda"],
+    "завтрак": ["molochnye-produkty-yaytsa", "khleb-i-vypechka", "chay-kofe-kakao"],
+    "перекус": ["gotovaya-eda", "chipsy-orekhi-i-sneki", "molochnye-produkty-yaytsa"],
+    "8 март": ["konditerskie-izdeliya-torty", "vino-i-igristoe", "ovoshchi-frukty"],
+    "23 феврал": ["myaso-ptitsa", "krepkiy-alkogol", "chipsy-orekhi-i-sneki"],
+    "новый год": ["myasnaya-gastronomiya", "ryba-moreprodukty-ikra", "vino-i-igristoe", "konditerskie-izdeliya-torty"],
+    "шашлык": ["myaso-ptitsa", "sousy-spetsii", "ovoshchi-frukty"],
 }
 
 

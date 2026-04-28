@@ -592,6 +592,30 @@ elif _nav_page == "🔧 Условия акций":
         else:
             df_unfilled = df_cvm.copy()
 
+        # Фильтр по месяцу
+        _MONTH_NAMES_COND = {
+            1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+            5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+            9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+        }
+        if "Год" in df_unfilled.columns and "Месяц" in df_unfilled.columns and not df_unfilled.empty:
+            _ym_pairs = []
+            for _, _r in df_unfilled[["Год", "Месяц"]].drop_duplicates().iterrows():
+                _y, _m = str(_r["Год"]).strip(), str(_r["Месяц"]).strip()
+                if _y.isdigit() and _m.isdigit():
+                    _ym_pairs.append((int(_y), int(_m)))
+            _ym_pairs = sorted(set(_ym_pairs))
+            if _ym_pairs:
+                _ym_labels = ["Все"] + [f"{_MONTH_NAMES_COND.get(m, m)} {y}" for y, m in _ym_pairs]
+                _sel_ym = st.selectbox("Месяц", _ym_labels, key="cond_month_filter")
+                if _sel_ym != "Все":
+                    _idx = _ym_labels.index(_sel_ym) - 1
+                    _y, _m = _ym_pairs[_idx]
+                    df_unfilled = df_unfilled[
+                        (df_unfilled["Год"].astype(str).str.strip() == str(_y)) &
+                        (df_unfilled["Месяц"].astype(str).str.strip() == str(_m))
+                    ].copy()
+
         st.caption(f"Акций без условий: {len(df_unfilled)}")
 
         if df_unfilled.empty:
@@ -607,8 +631,48 @@ elif _nav_page == "🔧 Условия акций":
 
             st.markdown("---")
 
+            # Генерация по одной акции
+            _promo_options_cond = {}
+            for _, _row in df_unfilled.iterrows():
+                _key = f"{_norm_num(_row.get('НОМЕР'))} — {_row.get('Название промо', '')}"
+                _promo_options_cond[_key] = _row.to_dict()
+
+            _col_one, _col_all = st.columns([2, 1])
+            with _col_one:
+                _selected_cond_key = st.selectbox(
+                    "Выберите акцию для генерации условий",
+                    list(_promo_options_cond.keys()),
+                    key="cond_single_select",
+                )
+            with _col_all:
+                st.markdown("&nbsp;", unsafe_allow_html=True)
+                _gen_one = st.button("🎯 Сгенерировать одну", key="gen_cond_one", use_container_width=True)
+
+            if _gen_one and _selected_cond_key:
+                try:
+                    from ai_generator import generate_promo_conditions, get_similar_examples
+                    _selected_promo = _promo_options_cond[_selected_cond_key]
+                    _all_promos = df_cvm.to_dict("records")
+                    _examples = get_similar_examples(_selected_promo, _all_promos, n=5)
+                    with st.spinner(f"Генерирую условия для {_norm_num(_selected_promo.get('НОМЕР'))}..."):
+                        _res = generate_promo_conditions(_selected_promo, _examples)
+                        _res["__row_idx"] = list(df_cvm[df_cvm["НОМЕР"].astype(str).str.strip() == str(_selected_promo.get("НОМЕР", "")).strip()].index)
+                        _res["__row_idx"] = _res["__row_idx"][0] if _res["__row_idx"] else None
+                        _res["__promo_num"] = _norm_num(_selected_promo.get("НОМЕР"))
+                        _res["__promo_name"] = str(_selected_promo.get("Название промо", ""))
+                    # Заменяем в conditions_results если уже есть, иначе добавляем
+                    _existing = st.session_state.get("conditions_results", [])
+                    _existing = [r for r in _existing if r.get("__promo_num") != _res["__promo_num"]]
+                    _existing.append(_res)
+                    st.session_state.conditions_results = _existing
+                    st.success(f"Сгенерированы условия для {_res['__promo_num']}")
+                except Exception as e:
+                    st.error(f"Ошибка: {e}")
+
+            st.markdown("---")
+
             # Generate conditions button
-            if st.button("🤖 Сгенерировать условия через AI", type="primary", key="gen_conditions"):
+            if st.button("🤖 Сгенерировать условия для ВСЕХ акций (массово)", type="primary", key="gen_conditions"):
                 try:
                     from ai_generator import generate_promo_conditions, get_similar_examples
 
@@ -645,34 +709,94 @@ elif _nav_page == "🔧 Условия акций":
                 edited_results = []
                 for i, res in enumerate(results):
                     with st.container(border=True):
-                        st.markdown(f"**{res.get('__promo_num', '')} — {res.get('__promo_name', '')}**")
+                        _check_col, _name_col = st.columns([0.05, 0.95])
+                        with _check_col:
+                            _approved = st.checkbox(
+                                "Согласовано",
+                                value=False,
+                                key=f"cond_approved_{i}",
+                                label_visibility="collapsed",
+                            )
+                        with _name_col:
+                            st.markdown(f"**{res.get('__promo_num', '')} — {res.get('__promo_name', '')}**")
 
                         desc = st.text_area(
                             "Описание акции",
-                            value=res.get("Описание акции", res.get("description", "")),
+                            value=res.get("Описание акции", ""),
                             key=f"cond_desc_{i}",
                             height=80,
                         )
-                        coupon = st.text_input(
+                        _c1, _c2, _c3 = st.columns(3)
+                        with _c1:
+                            discount = st.text_input(
+                                "Скидка",
+                                value=res.get("Скидка", ""),
+                                key=f"cond_discount_{i}",
+                            )
+                        with _c2:
+                            bonus = st.text_input(
+                                "Бонусы",
+                                value=res.get("Бонусы", ""),
+                                key=f"cond_bonus_{i}",
+                            )
+                        with _c3:
+                            mechanic = st.text_input(
+                                "Механика",
+                                value=res.get("Механика", ""),
+                                key=f"cond_mech_{i}",
+                            )
+                        _c4, _c5 = st.columns(2)
+                        with _c4:
+                            category = st.text_input(
+                                "Категория",
+                                value=res.get("Категория", ""),
+                                key=f"cond_category_{i}",
+                            )
+                        with _c5:
+                            expiry = st.text_input(
+                                "Срок сгорания бонусов",
+                                value=res.get("Срок сгорания бонусов", ""),
+                                key=f"cond_expiry_{i}",
+                            )
+                        coupon_name = st.text_input(
+                            "Название информационного купона для МП",
+                            value=res.get("Название информационного купона для МП", ""),
+                            key=f"cond_coupon_name_{i}",
+                        )
+                        coupon = st.text_area(
                             "Текст купона",
-                            value=res.get("Текст на информационном купоне / слип-чеке",
-                                         res.get("coupon_text", "")),
+                            value=res.get("Текст на информационном купоне / слип-чеке", ""),
                             key=f"cond_coupon_{i}",
+                            height=120,
                         )
                         button_text = st.text_input(
                             "Кнопка",
-                            value=res.get("Кнопка", res.get("button", "")),
+                            value=res.get("Кнопка", ""),
                             key=f"cond_button_{i}",
                         )
                         edited_results.append({
                             "__row_idx": res.get("__row_idx"),
+                            "__promo_num": res.get("__promo_num"),
+                            "__approved": _approved,
                             "Описание акции": desc,
+                            "Скидка": discount,
+                            "Бонусы": bonus,
+                            "Механика": mechanic,
+                            "Категория": category,
+                            "Срок сгорания бонусов": expiry,
+                            "Название информационного купона для МП": coupon_name,
                             "Текст на информационном купоне / слип-чеке": coupon,
                             "Кнопка": button_text,
                         })
 
+                _approved_count = sum(1 for er in edited_results if er.get("__approved"))
+                if _approved_count:
+                    st.info(f"Согласовано к сохранению: {_approved_count} из {len(edited_results)}")
+                else:
+                    st.warning("Отметьте галочкой акции, которые хотите сохранить в Google Sheets")
+
                 # Save to Google Sheets button
-                if st.button("💾 Сохранить условия в Google Sheets", type="primary", key="save_conditions"):
+                if st.button("💾 Сохранить согласованные условия в Google Sheets", type="primary", key="save_conditions"):
                     try:
                         import gspread
                         from google.oauth2.service_account import Credentials
@@ -692,11 +816,19 @@ elif _nav_page == "🔧 Условия акций":
 
                             saved = 0
                             for er in edited_results:
+                                if not er.get("__approved"):
+                                    continue
                                 row_idx = er.get("__row_idx")
                                 if row_idx is None:
                                     continue
                                 sheet_row = int(row_idx) + 2  # +1 header, +1 for 0-index
                                 for field in ["Описание акции",
+                                              "Скидка",
+                                              "Бонусы",
+                                              "Механика",
+                                              "Категория",
+                                              "Срок сгорания бонусов",
+                                              "Название информационного купона для МП",
                                               "Текст на информационном купоне / слип-чеке",
                                               "Кнопка"]:
                                     if field in headers:
@@ -748,15 +880,16 @@ elif _nav_page == "✨ Генерация PUSH":
         else:
             df_push_promos = df_cvm.copy()
 
-        # Exclude promos that already have push
-        existing_push_nums = set()
+        # Count existing push messages per promo (not exclude!)
+        _existing_push_count = {}  # promo_num -> count of existing messages
         if not df_push.empty and "Номер промо" in df_push.columns:
             for val in df_push["Номер промо"].dropna():
-                existing_push_nums.add(_norm_num(val))
+                _pn = _norm_num(val)
+                _existing_push_count[_pn] = _existing_push_count.get(_pn, 0) + 1
 
         if "НОМЕР" in df_push_promos.columns:
             df_push_promos["_num_str"] = df_push_promos["НОМЕР"].apply(_norm_num)
-            df_push_promos = df_push_promos[~df_push_promos["_num_str"].isin(existing_push_nums)].copy()
+            df_push_promos["_existing_msgs"] = df_push_promos["_num_str"].map(lambda x: _existing_push_count.get(x, 0))
 
         # Month selectbox
         month_options_gen = ["Апрель 2026", "Май 2026", "Июнь 2026",
@@ -810,7 +943,14 @@ elif _nav_page == "✨ Генерация PUSH":
         if df_gen.empty:
             st.info("Нет акций без push-сообщений для выбранного месяца")
         else:
-            st.caption(f"Акций без push-сообщений: {len(df_gen)}")
+            _no_push = len(df_gen[df_gen.get("_existing_msgs", 0) == 0]) if "_existing_msgs" in df_gen.columns else len(df_gen)
+            _has_push = len(df_gen) - _no_push
+            _caption = f"Акций: {len(df_gen)}"
+            if _no_push:
+                _caption += f" (без push: {_no_push})"
+            if _has_push:
+                _caption += f" (с push: {_has_push})"
+            st.caption(_caption)
 
             # Вкладки массовая / по одной
             _tab_single, _tab_mass = st.tabs(["🎯 По одной акции", "⚡ Массовая генерация"])
@@ -830,6 +970,8 @@ elif _nav_page == "✨ Генерация PUSH":
 
                     for idx, (_, row) in enumerate(df_gen.iterrows()):
                         promo = row.to_dict()
+                        _promo_num = _norm_num(promo.get("НОМЕР"))
+                        _existing_count = _existing_push_count.get(_promo_num, 0)
                         schedule = calculate_push_schedule(promo)
                         try:
                             result = generate_push_texts(
@@ -843,6 +985,10 @@ elif _nav_page == "✨ Генерация PUSH":
                                 anthropic_key=ai_key if ai_provider == "anthropic" else None,
                                 openai_key=ai_key if ai_provider == "openai" else None,
                             )
+                            # Сдвигаем нумерацию push если уже есть сообщения
+                            if _existing_count > 0 and "pushes" in result:
+                                for _p in result["pushes"]:
+                                    _p["push_number"] = _p.get("push_number", 1) + _existing_count
                             # Auto deeplink
                             needs_act = _needs_activation(promo)
                             if needs_act:
@@ -878,6 +1024,8 @@ elif _nav_page == "✨ Генерация PUSH":
                         auto_deeplink = item["auto_deeplink"]
                         promo_num = _norm_num(promo.get("НОМЕР"))
                         promo_name = str(promo.get("Название промо", ""))
+                        _ec = _existing_push_count.get(promo_num, 0)
+                        _existing_badge = f" (уже {_ec} msg)" if _ec > 0 else ""
 
                         _check_col, _exp_col = st.columns([0.05, 0.95])
                         with _check_col:
@@ -889,7 +1037,7 @@ elif _nav_page == "✨ Генерация PUSH":
                             )
                             st.session_state.mass_checked[i] = checked
                         with _exp_col:
-                          with st.expander(f"**{promo_num} — {promo_name}**", expanded=False):
+                          with st.expander(f"**{promo_num} — {promo_name}{_existing_badge}**", expanded=False):
                             pushes = result.get("pushes", [])
                             for p_idx, push_data in enumerate(pushes):
                                 push_num = push_data.get("push_number", p_idx + 1)
@@ -1050,6 +1198,12 @@ elif _nav_page == "✨ Генерация PUSH":
                         st.session_state.pop("dixy_chips_select", None)
                         st.session_state.pop("single_generated_result", None)
 
+                    # Показать количество уже существующих push
+                    _sel_num = _norm_num(selected_promo.get("НОМЕР"))
+                    _sel_existing = _existing_push_count.get(_sel_num, 0)
+                    if _sel_existing > 0:
+                        st.info(f"У этой акции уже есть {_sel_existing} push-сообщений. Новые будут нумероваться с #{_sel_existing + 1}")
+
                     # Promo details
                     with st.expander("📋 Детали акции", expanded=False):
                         info_cols = st.columns(3)
@@ -1183,6 +1337,10 @@ elif _nav_page == "✨ Генерация PUSH":
                                     anthropic_key=ai_key if ai_provider == "anthropic" else None,
                                     openai_key=ai_key if ai_provider == "openai" else None,
                                 )
+                                # Сдвигаем нумерацию если уже есть push
+                                if _sel_existing > 0 and "pushes" in result:
+                                    for _p in result["pushes"]:
+                                        _p["push_number"] = _p.get("push_number", 1) + _sel_existing
                                 needs_act = _needs_activation(selected_promo)
                                 if needs_act:
                                     auto_dl = "купон"
