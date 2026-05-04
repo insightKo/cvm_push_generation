@@ -54,6 +54,16 @@ section[data-testid="stSidebar"] .stSelectbox label,
 section[data-testid="stSidebar"] .stRadio label {
     color: #e0e0e0 !important;
 }
+/* Кнопки в sidebar — тёмные, как остальные элементы */
+section[data-testid="stSidebar"] .stButton > button {
+    background: rgba(255,255,255,0.08) !important;
+    color: #e0e0e0 !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+}
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(255,255,255,0.15) !important;
+    border-color: rgba(255,255,255,0.3) !important;
+}
 
 /* Gradient progress bar */
 .stProgress > div > div {
@@ -935,7 +945,7 @@ elif _nav_page == "✨ Генерация PUSH":
             if start_d and end_d:
                 if end_d < start_d:
                     start_d, end_d = end_d, start_d
-                if start_d <= gen_month_end and end_d >= gen_month_start:
+                if start_d <= gen_month_end and end_d >= gen_month_start and str(row.get("Месяц", "")).strip() == str(gen_month_num):
                     month_filtered.append(row)
 
         df_gen = pd.DataFrame(month_filtered) if month_filtered else pd.DataFrame()
@@ -953,10 +963,10 @@ elif _nav_page == "✨ Генерация PUSH":
             st.caption(_caption)
 
             # Вкладки массовая / по одной
-            _tab_single, _tab_mass = st.tabs(["🎯 По одной акции", "⚡ Массовая генерация"])
+            gen_tab = st.radio("", ["🎯 По одной акции", "⚡ Массовая генерация"], index=1, key="gen_tab_radio", label_visibility="collapsed")
 
             # ── МАССОВАЯ ─────────────────────────────────────────────
-            with _tab_mass:
+            if gen_tab == "⚡ Массовая генерация":
                 if st.button("🚀 Сгенерировать все", type="primary", key="gen_mass_btn"):
                     from ai_generator import (
                         generate_push_texts, calculate_push_schedule,
@@ -1172,7 +1182,7 @@ elif _nav_page == "✨ Генерация PUSH":
                             st.warning("Нет выбранных акций для сохранения")
 
             # ── ПО ОДНОЙ ─────────────────────────────────────────────
-            with _tab_single:
+            else:
                 # Selectbox with promos
                 promo_options = {}
                 for _, row in df_gen.iterrows():
@@ -1197,6 +1207,8 @@ elif _nav_page == "✨ Генерация PUSH":
                         st.session_state.pop("dixy_selected_products", None)
                         st.session_state.pop("dixy_chips_select", None)
                         st.session_state.pop("single_generated_result", None)
+                        st.session_state.pop("single_result", None)
+                        st.session_state.pop("single_approved", None)
 
                     # Показать количество уже существующих push
                     _sel_num = _norm_num(selected_promo.get("НОМЕР"))

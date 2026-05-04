@@ -67,7 +67,11 @@ _MULTI_SLUGS = {
     "шуба": ["ryba-moreprodukty-ikra", "ovoshchi-frukty", "sousy-spetsii"],
     "крабов": ["ryba-moreprodukty-ikra", "ovoshchi-frukty", "konservy"],
     "сморреброд": ["myasnaya-gastronomiya", "syry", "khleb-i-vypechka", "ryba-moreprodukty-ikra"],
+    # Коктейли — мохито (алко и без алкоголя): ром, мята, лайм, газировка, фрукты
     "коктейл": ["krepkiy-alkogol", "voda-soki-napitki", "ovoshchi-frukty"],
+    "смузи": ["ovoshchi-frukty", "molochnye-produkty-yaytsa"],
+    "витамин": ["ovoshchi-frukty", "voda-soki-napitki"],
+    "мохито": ["krepkiy-alkogol", "voda-soki-napitki", "ovoshchi-frukty"],
     "постим": ["ovoshchi-frukty", "bakaleya", "konservy"],
     "пп": ["dlya-zdorovogo-pitaniya", "ovoshchi-frukty"],
     "правильное питание": ["dlya-zdorovogo-pitaniya", "ovoshchi-frukty"],
