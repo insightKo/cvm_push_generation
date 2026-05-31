@@ -1221,12 +1221,65 @@ _PRODUCT_DETAILS = {
 }
 
 
+_RECIPE_INGREDIENTS = {
+    # phrase для detect → {dish: название блюда для push/title, ingredients: список через запятую}
+    # Самые специфичные многословные фразы — иначе «греческий йогурт» матчит «греческ»
+    "греческий салат": {"dish": "греческий салат",
+                        "ingredients": "помидоры черри, фету, огурцы, красный лук, маслины, оливковое масло"},
+    "клубник":         {"dish": "клубнику с йогуртом",
+                        "ingredients": "клубнику, черешню, греческий йогурт"},
+    "черешн":          {"dish": "черешню с йогуртом",
+                        "ingredients": "черешню, клубнику, греческий йогурт"},
+    "окрошк":          {"dish": "окрошку",
+                        "ingredients": "квас, редис, огурцы, картофель, варёную колбасу, яйца, сметану, зелень"},
+    "оливье":          {"dish": "оливье",
+                        "ingredients": "колбасу, картофель, морковь, яйца, огурцы, горошек, лук, майонез"},
+    "крабов":          {"dish": "крабовый салат",
+                        "ingredients": "крабовые палочки, рис, кукурузу, яйца, огурцы, майонез"},
+    "шуба":            {"dish": "сельдь под шубой",
+                        "ingredients": "сельдь, картофель, морковь, свёклу, лук, яйца, майонез"},
+    "сморреброд":      {"dish": "сморреброды",
+                        "ingredients": "ржаной хлеб, лосось, креветки, сыр, авокадо, огурец, масло, укроп"},
+    "смузи":           {"dish": "смузи",
+                        "ingredients": "бананы, клубнику, малину, йогурт, мёд, киви, мяту"},
+    "мохито":          {"dish": "мохито",
+                        "ingredients": "мяту, лайм, тростниковый сахар, содовую, лёд, ром"},
+}
+
+
+def _detect_recipe(name: str, category: str, coupon_text: str) -> dict | None:
+    """Если в названии/категории/купоне есть рецептное блюдо — вернуть {dish, ingredients}.
+
+    Используется для:
+      • _build_product_details — подставить ингредиенты как «details» в push;
+      • generate_builtin — подставить название блюда как «dish_name» в заголовок.
+    """
+    haystack = (name + " " + category + " " + coupon_text).lower()
+    for phrase, rec in _RECIPE_INGREDIENTS.items():
+        if phrase in haystack:
+            return rec
+    return None
+
+
+def _recipe_ingredients_text(name: str, category: str, coupon_text: str) -> str:
+    """Совместимость: только список ингредиентов (без названия блюда)."""
+    rec = _detect_recipe(name, category, coupon_text)
+    return rec["ingredients"] if rec else ""
+
+
 def _build_product_details(category: str, products_text: str, coupon_text: str) -> str:
     """Собрать расшифровку товаров из ВСЕХ совпавших категорий + купона.
 
     Для акции «бытовая химия и средства для ухода за обувью» найдёт и химию, и обувь.
+    Для рецептных акций (окрошка, греческий салат, клубника-черешня с йогуртом и т.п.) —
+    возвращает список ингредиентов блюда, чтобы клиент видел в push, на что скидка.
     Дедуплицирует отдельные товары.
     """
+    # 1) Сначала проверяем — это рецептная акция?
+    recipe = _recipe_ingredients_text("", category, coupon_text)
+    if recipe:
+        return recipe
+
     text = (category + " " + products_text + " " + coupon_text).lower()
     found_parts = []
     seen_keywords = set()
@@ -2092,7 +2145,7 @@ _SEGMENT_CONFIG = {
         ],
         "greeting": [
             "",
-            " Для всей семьи 👨‍👩‍👧‍👦",
+            " Для всей семьи 👨👩👧👦",
             " Домашние скажут спасибо 😊",
         ],
     },
@@ -2145,7 +2198,7 @@ _SEGMENT_CONFIG = {
         ],
         "greeting": [
             "",
-            " Для настоящих гурманов 👨‍🍳",
+            " Для настоящих гурманов 👨🍳",
             " Вкус, который оценишь 😋",
         ],
     },
@@ -2332,6 +2385,14 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
     if details_short.lower() in ("все товары", "все"):
         details_short = ""
 
+    # ── Распознавание рецептной акции (окрошка, греческий салат, клубника с йогуртом и т.п.) ──
+    # Для таких акций в заголовке push указываем БЛЮДО, в body — список ингредиентов.
+    _recipe = _detect_recipe(name_for_details, cat["category"], coupon_text)
+    dish_name = _recipe["dish"] if _recipe else ""
+    if dish_name:
+        # Заголовок «-20% на греческий салат» — рецепт важнее категории
+        details_short = dish_name
+
     # ── Извлечение условия (мин. чек, кол-во шт. и т.д.) ──
     condition_raw = _extract_condition(promo)
     # condition: для вставки внутри body → "При чеке от 1000₽. "
@@ -2413,6 +2474,7 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
         "benefit": benefit["text"] or "выгода",
         "details": details,
         "details_short": details_short,
+        "dish_name": dish_name,
         "end": end_str or "конца акции",
         "date": end_str or "конца акции",
         "products": details,
@@ -2596,8 +2658,36 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
             if not pairs_pool:
                 pairs_pool = [("{emoji}{value} {date_context}", "{products} {date_context}.{humor} {cta}")]
 
-        # Пятничные/выходные пары — добавляем
-        if push_type != "reminder":
+        # ── Рецептные акции: подменяем пул на «-X% на блюдо / найди ингредиенты» ──
+        # Структура (по требованию заказчика): рецепт в заголовке, перечисление ингредиентов в body.
+        if dish_name and push_type != "reminder":
+            if _ben == "discount_pct":
+                pairs_pool = [
+                    ("{emoji}-{value} на {dish_name}",
+                     "{date_context}. Найди все ингредиенты в ДИКСИ: {products}. {cta}"),
+                    ("{emoji}{value} скидка на {dish_name}",
+                     "{date_context}. Собери корзину: {products}. {cta}"),
+                ]
+            elif _ben == "cashback_pct":
+                pairs_pool = [
+                    ("{emoji}{value} кешбэк на {dish_name}",
+                     "{date_context}. Ингредиенты в ДИКСИ: {products}. {cta}"),
+                    ("{emoji}{value} монетами за {dish_name}",
+                     "{date_context}. Бери: {products}. {cta}"),
+                ]
+            elif _ben == "discount_rub":
+                pairs_pool = [
+                    ("{emoji}-{value} на {dish_name}",
+                     "{date_context}. Ингредиенты в ДИКСИ: {products}. {cta}"),
+                ]
+            elif _ben == "cashback_rub":
+                pairs_pool = [
+                    ("{emoji}{value} монетами за {dish_name}",
+                     "{date_context}. Бери в ДИКСИ: {products}. {cta}"),
+                ]
+
+        # Пятничные/выходные пары — добавляем (НЕ для рецептных, чтобы не размывать блюдо)
+        if push_type != "reminder" and not dish_name:
             if is_friday:
                 pairs_pool.append(("{emoji}Пятничная выгода {value}",
                                    "{products} {date_context}.{humor} {cta}"))
@@ -2859,15 +2949,301 @@ def generate_push_texts(promo: dict, rules: str, num_variants: int,
         raise ValueError(f"Неизвестный провайдер: {provider}")
 
 
-def _call_anthropic(prompt: str, api_key: str) -> dict:
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
+def build_template_prompt(target_promo: dict, template_promo: dict,
+                          template_messages: list[dict], schedule: list[dict],
+                          title_max_len: int, body_max_len: int,
+                          rules: str = "") -> str:
+    """Собрать промпт для генерации push по шаблону другой акции.
+
+    template_messages — список одобренных push-сообщений шаблонной акции:
+      [{"push_number": 1, "title": "...", "body": "...", "date": "...", "time": "..."}, ...]
+
+    Цель: сгенерировать тексты для target_promo ПОЛНОСТЬЮ ПО АНАЛОГИИ с шаблоном,
+    подменив только условия (суммы, проценты, чек, даты).
+    """
+    # Расписание целевой акции
+    schedule_text = ""
+    for i, s in enumerate(schedule, 1):
+        stype = s.get("type", "start")
+        schedule_text += f"  Push #{i}: дата {s['date']}, время {s.get('time','12:00')}, тип: {stype}\n"
+
+    # Извлекаем условия шаблонной и целевой акций
+    tmpl_benefit = _extract_benefit(template_promo)
+    tmpl_condition = _extract_condition(template_promo)
+    tmpl_cat = _extract_category_details(template_promo)
+    tmpl_needs_act = _needs_activation(template_promo)
+
+    tgt_benefit = _extract_benefit(target_promo)
+    tgt_condition = _extract_condition(target_promo)
+    tgt_cat = _extract_category_details(target_promo)
+    tgt_needs_act = _needs_activation(target_promo)
+
+    # Полные данные целевой акции (чтобы AI мог увидеть все нюансы)
+    tgt_fields = ""
+    for key, val in target_promo.items():
+        v = _clean(val)
+        if v:
+            tgt_fields += f"- {key}: {v}\n"
+
+    # Шаблонные сообщения
+    tmpl_messages_text = ""
+    for m in template_messages:
+        pn = m.get("push_number", "?")
+        title = m.get("title", "")
+        body = m.get("body", "")
+        d = m.get("date", "")
+        t = m.get("time", "")
+        tmpl_messages_text += f"\nPush #{pn} ({d} {t}):\n"
+        tmpl_messages_text += f"  Заголовок: {title}\n"
+        tmpl_messages_text += f"  Текст: {body}\n"
+
+    prompt = f"""Ты — лучший копирайтер сети магазинов ДИКСИ. Тебе нужно сгенерировать push-уведомления ПО АНАЛОГИИ с уже одобренными текстами для похожей акции.
+
+═══════════════════════════════════════════
+ШАБЛОННАЯ АКЦИЯ (одобренные тексты-образцы):
+═══════════════════════════════════════════
+- Номер: {_clean(template_promo.get('НОМЕР'))}
+- Название: {_clean(template_promo.get('Название промо'))}
+- Выгода: {tmpl_benefit['text']} (тип: {tmpl_benefit['type']}, значение: {tmpl_benefit['value']})
+- Условие чека: {tmpl_condition or 'нет'}
+- Категория/товары: {tmpl_cat['products_text'] or tmpl_cat['category'] or 'все товары'}
+- Активация: {'да' if tmpl_needs_act else 'нет'}
+- Старт: {_clean(template_promo.get('Старт акции'))}
+- Окончание: {_clean(template_promo.get('Окончание акции'))}
+
+ОДОБРЕННЫЕ PUSH-СООБЩЕНИЯ ШАБЛОНА (используй их как ОБРАЗЕЦ структуры, тона, юмора, CTA):
+{tmpl_messages_text}
+
+═══════════════════════════════════════════
+ЦЕЛЕВАЯ АКЦИЯ (для неё нужно сгенерировать тексты):
+═══════════════════════════════════════════
+{tgt_fields}
+
+ИЗВЛЕЧЁННЫЕ УСЛОВИЯ ЦЕЛЕВОЙ АКЦИИ:
+- Выгода: {tgt_benefit['text']} (тип: {tgt_benefit['type']}, значение: {tgt_benefit['value']})
+- Условие чека: {tgt_condition or 'нет'}
+- Категория/товары: {tgt_cat['products_text'] or tgt_cat['category'] or 'все товары'}
+- Активация: {'да' if tgt_needs_act else 'нет'}
+
+РАСПИСАНИЕ PUSH ДЛЯ ЦЕЛЕВОЙ АКЦИИ:
+{schedule_text}
+
+═══════════════════════════════════════════
+ГЛАВНОЕ ПРАВИЛО — ГЕНЕРАЦИЯ ПО ШАБЛОНУ:
+═══════════════════════════════════════════
+
+Возьми каждое одобренное сообщение шаблона и сделай ПОЛНОСТЬЮ АНАЛОГИЧНОЕ для целевой акции:
+  • Сохрани СТРУКТУРУ заголовка и body (порядок частей, длину, тон, юмор, CTA, эмодзи).
+  • Сохрани ЭМОДЗИ из шаблона (если он подходит к категории целевой акции).
+  • Сохрани ЮМОР, фразы-связки, мотивацию — переноси их слово в слово, если они общие.
+  • ПОДМЕНИ ТОЛЬКО УСЛОВИЯ:
+      – суммы выгоды (например, шаблон «100₽» → целевая «{tgt_benefit['value']}»)
+      – проценты (например, шаблон «20%» → целевая «{tgt_benefit['value']}»)
+      – минимальный чек (например, шаблон «от 1000₽» → целевая «{tgt_condition or 'без чека'}»)
+      – даты (бери из расписания целевой акции)
+      – категорию/товары (если в шаблоне они упомянуты — заменяй на товары целевой)
+
+Если в шаблоне 2 push, в целевой тоже должно быть столько push, сколько в расписании выше — не больше и не меньше.
+Если push в расписании больше, чем в шаблоне — последний шаблонный push копируй для остальных push, подменяя дату.
+Если push в расписании меньше — генерируй только нужное количество.
+
+═══════════════════════════════════════════
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА (НАРУШЕНИЕ = БРАК):
+═══════════════════════════════════════════
+
+1. ТОЛЬКО КИРИЛЛИЦА. Никакой латиницы! Бренды — кириллицей.
+2. ТОЧНЫЕ ЦИФРЫ из целевой акции, НЕ из шаблона.
+3. ПРОГРАММА ЛОЯЛЬНОСТИ ДИКСИ = «монеты», НЕ «бонусы», НЕ «баллы».
+4. НЕ ВРИ И НЕ ДОДУМЫВАЙ. Только факты из целевой акции.
+5. ЗНАК РУБЛЯ = ₽, НЕ «р.» и НЕ «руб.».
+6. ОБРАЩЕНИЕ НА «ТЫ», без тыканья в заголовке.
+
+{f'''
+ДОПОЛНИТЕЛЬНЫЕ ПРАВИЛА ОТ ПОЛЬЗОВАТЕЛЯ:
+{rules}
+''' if rules.strip() else ''}
+
+ЖЁСТКИЕ ОГРАНИЧЕНИЯ:
+- Заголовок: СТРОГО до {title_max_len} символов (включая эмодзи)
+- Текст body: СТРОГО до {body_max_len} символов (включая эмодзи)
+
+ЗАДАНИЕ:
+Сгенерируй по 1 варианту для каждого push из расписания целевой акции, ПО АНАЛОГИИ с шаблонными.
+
+Ответь СТРОГО в JSON (без markdown, без ```):
+{{
+  "pushes": [
+    {{
+      "push_number": 1,
+      "date": "...",
+      "time": "...",
+      "variants": [
+        {{"title": "заголовок", "title_length": 25, "body": "текст", "body_length": 95}}
+      ]
+    }}
+  ]
+}}"""
+    return prompt
+
+
+def _first_int_str(s) -> str:
+    """Первое целое число из строки как строка. '+100₽ монетами' → '100'."""
+    if not s:
+        return ""
+    m = re.search(r"\d+", str(s))
+    return m.group(0) if m else ""
+
+
+def generate_push_from_template_builtin(target_promo: dict, template_promo: dict,
+                                        template_messages: list[dict],
+                                        schedule: list[dict]) -> dict:
+    """Шаблонная генерация без AI — копируем текст шаблона и подменяем числа/даты.
+
+    Принципы:
+      • для каждого push из расписания целевой акции берём шаблонное сообщение
+        с тем же индексом (или последнее, если шаблонных меньше);
+      • подменяем число выгоды (100→150), число чека (1000→1500), дату окончания (31.05→30.06);
+      • дату/время push берём ИЗ РАСПИСАНИЯ целевой акции, а не из шаблона.
+    """
+    tmpl_b = _extract_benefit(template_promo)
+    tgt_b = _extract_benefit(target_promo)
+    tmpl_c = _extract_condition(template_promo)
+    tgt_c = _extract_condition(target_promo)
+
+    tmpl_val_num = _first_int_str(tmpl_b.get("value", ""))
+    tgt_val_num = _first_int_str(tgt_b.get("value", ""))
+    tmpl_check_num = _first_int_str(tmpl_c)
+    tgt_check_num = _first_int_str(tgt_c)
+
+    # Дата окончания шаблона и цели — для замены "до 31.05"
+    def _end_short(promo):
+        yh = promo.get("Год", date.today().year)
+        try:
+            yh = int(yh)
+        except (ValueError, TypeError):
+            yh = date.today().year
+        d = _parse_date(_clean(promo.get("Окончание акции")), yh)
+        return d.strftime("%d.%m") if d else ""
+
+    tmpl_end_short = _end_short(template_promo)
+    tgt_end_short = _end_short(target_promo)
+
+    # Список (старое → новое), отсортированный по убыванию длины старого числа,
+    # чтобы 1000→1500 не мешало 100→150 (или наоборот).
+    num_subs = []
+    if tmpl_check_num and tgt_check_num and tmpl_check_num != tgt_check_num:
+        num_subs.append((tmpl_check_num, tgt_check_num))
+    if tmpl_val_num and tgt_val_num and tmpl_val_num != tgt_val_num \
+            and tmpl_val_num != tmpl_check_num:
+        num_subs.append((tmpl_val_num, tgt_val_num))
+    num_subs.sort(key=lambda x: -len(x[0]))
+
+    def _substitute(text: str) -> str:
+        if not text:
+            return text
+        new_text = text
+
+        # 1) Дата окончания (заменяем сначала, чтобы не пересеклась с числами)
+        if tmpl_end_short and tgt_end_short and tmpl_end_short != tgt_end_short:
+            new_text = new_text.replace(tmpl_end_short, tgt_end_short)
+
+        # 2) Числа — через плейсхолдеры, чтобы не было повторных подмен
+        for i, (old, _) in enumerate(num_subs):
+            new_text = re.sub(rf"(?<!\d){re.escape(old)}(?!\d)", f"\u0000SUB{i}\u0000", new_text)
+        for i, (_, new) in enumerate(num_subs):
+            new_text = new_text.replace(f"\u0000SUB{i}\u0000", new)
+
+        return new_text
+
+    output_pushes = []
+    if not template_messages or not schedule:
+        return {"pushes": []}
+
+    for i, sched in enumerate(schedule):
+        tmpl_idx = min(i, len(template_messages) - 1)
+        tmpl_msg = template_messages[tmpl_idx]
+        title_new = _substitute(tmpl_msg.get("title", ""))
+        body_new = _substitute(tmpl_msg.get("body", ""))
+        output_pushes.append({
+            "push_number": i + 1,
+            "date": sched.get("date", ""),
+            "time": sched.get("time", "10:00"),
+            "variants": [{
+                "title": title_new,
+                "body": body_new,
+                "title_length": len(title_new),
+                "body_length": len(body_new),
+            }],
+        })
+
+    return {"pushes": output_pushes}
+
+
+def generate_push_from_template(target_promo: dict, template_promo: dict,
+                                template_messages: list[dict],
+                                schedule: list[dict],
+                                title_max_len: int = 35,
+                                body_max_len: int = 120,
+                                rules: str = "",
+                                provider: str = None,
+                                anthropic_key: str = None,
+                                openai_key: str = None) -> dict:
+    """Сгенерировать push для целевой акции по аналогии с шаблонной.
+
+    builtin — простая регулярная подмена чисел/дат без AI.
+    anthropic / openai — генерация через LLM с промптом «по аналогии».
+    """
+    provider = provider or AI_PROVIDER or "builtin"
+
+    if provider == "builtin":
+        return generate_push_from_template_builtin(
+            target_promo, template_promo, template_messages, schedule,
+        )
+
+    prompt = build_template_prompt(
+        target_promo=target_promo,
+        template_promo=template_promo,
+        template_messages=template_messages,
+        schedule=schedule,
+        title_max_len=title_max_len,
+        body_max_len=body_max_len,
+        rules=rules,
     )
-    return _parse_response(message.content[0].text)
+
+    if provider == "anthropic":
+        key = anthropic_key or ANTHROPIC_API_KEY
+        if not key:
+            raise ValueError("API ключ Anthropic не указан")
+        return _call_anthropic(prompt, key)
+    elif provider == "openai":
+        key = openai_key or OPENAI_API_KEY
+        if not key:
+            raise ValueError("API ключ OpenAI не указан")
+        return _call_openai(prompt, key)
+    else:
+        raise ValueError(f"Неизвестный провайдер: {provider}")
+
+
+def _anthropic_message(prompt: str, api_key: str, max_tokens: int = 4096) -> str:
+    """Запрос к Anthropic с увеличенным таймаутом, повторами и понятной ошибкой при обрыве."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key, timeout=90.0, max_retries=4)
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIConnectionError as e:
+        raise RuntimeError(
+            "Не удалось подключиться к Anthropic API. Проверьте интернет/VPN "
+            "(API недоступен с российских IP) и попробуйте ещё раз."
+        ) from e
+    return message.content[0].text
+
+
+def _call_anthropic(prompt: str, api_key: str) -> dict:
+    return _parse_response(_anthropic_message(prompt, api_key, 4096))
 
 
 def _call_openai(prompt: str, api_key: str) -> dict:
@@ -3032,6 +3408,18 @@ def _build_promo_conditions_prompt(promo: dict, examples: list[dict]) -> str:
         "коктейл алкогол": {
             "default": "АЛКОГОЛЬНЫЕ КОКТЕЙЛИ:\n  водка, ром, виски, ликёр, сок, тоник, лимон, мята, лёд",
         },
+        "окрошк": {
+            "default": "ОКРОШКА — ингредиенты:\n  квас, редис, картофель, огурцы свежие, яйца, варёная колбаса (Докторская) или ветчина, сметана, зелёный лук, укроп, петрушка\n  Тема: летний холодный суп",
+        },
+        "греческ": {
+            "default": "ГРЕЧЕСКИЙ САЛАТ — ингредиенты:\n  помидоры черри, сыр фета (или брынза/фетакса), огурцы свежие, красный лук, маслины и оливки, оливковое масло, орегано/базилик\n  Тема: лёгкий средиземноморский салат",
+        },
+        "клубник": {
+            "default": "КЛУБНИКА И ЧЕРЕШНЯ С ГРЕЧЕСКИМ ЙОГУРТОМ — ингредиенты:\n  клубника свежая, черешня свежая, греческий йогурт натуральный\n  Тема: летний полезный десерт",
+        },
+        "черешн": {
+            "default": "ЧЕРЕШНЯ С ЙОГУРТОМ — ингредиенты:\n  черешня свежая, клубника свежая, греческий йогурт натуральный\n  Тема: летний полезный десерт",
+        },
     }
 
     # Для тематических/рецептных акций — парсим актуальные товары с dixy.ru + рецепт
@@ -3041,6 +3429,7 @@ def _build_promo_conditions_prompt(promo: dict, examples: list[dict]) -> str:
         "тонус", "правильн", "кулич", "оливье", "шуба", "сморреброд",
         "крабов", "ужин", "завтрак", "перекус", "пасх",
         "8 март", "23 феврал", "новый год", "шашлык", "смузи", "витамин",
+        "окрошк", "греческ", "клубник", "черешн",
     )
     if any(kw in _name_lower for kw in _recipe_keywords):
         # Получаем месяц
@@ -3197,6 +3586,17 @@ def _build_promo_conditions_prompt(promo: dict, examples: list[dict]) -> str:
       Пример для 1 дня: «на апельсиновый, яблочный, томатный и другие соки, а также воду.\n\nСкидка действует только 1 день, 15 апреля 2026\nc картой клуба Друзей Дикси на кассе магазина\nили на онлайн покупки в приложении ДИКСИ (Доставка от 40 мин)»
 
 9. РАСШИФРОВКА ТОВАРОВ: Обязательно перечисляй КОНКРЕТНЫЕ товары внутри категории!
+
+   🍳 РЕЦЕПТНЫЕ АКЦИИ (блюдо в названии: окрошка, греческий салат, клубника с йогуртом и т.п.):
+   В тексте купона ОБЯЗАТЕЛЬНО перечисли ВСЕ ингредиенты блюда из подсказки «🍳 ГОТОВЫЙ РЕЦЕПТ» —
+   клиент должен понимать, на что распространяется скидка.
+   ❌ Нельзя: «на Окрошка с редиской и другую готовую еду» — клиент не понимает, что входит в скидку.
+   ✅ Правильно: «на квас, редис, картофель, огурцы, варёную колбасу, яйца, сметану, зелёный лук и укроп — всё для окрошки.»
+   ✅ Правильно: «на помидоры черри, сыр фета, огурцы, красный лук, маслины и оливковое масло — всё для греческого салата.»
+   ✅ Правильно: «на клубнику, черешню и греческий йогурт.»
+   Перечисляй компактно через запятую, в конце — «— всё для [название блюда]» (если блюдо в названии).
+
+
    - «овощи» → «капусту, помидоры, огурцы, морковь, перец и другие овощи»
    - «зелень» → «укроп, петрушку, базилик, салат и другую зелень»
    - «фрукты» → «яблоки, бананы, апельсины, груши и другие фрукты»
@@ -3263,14 +3663,7 @@ def generate_promo_conditions(promo: dict, examples: list[dict]) -> dict:
     examples = [_sanitize_promo(ex) for ex in examples]
     prompt = _build_promo_conditions_prompt(promo, examples)
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=key)
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return _parse_response(message.content[0].text)
+    return _parse_response(_anthropic_message(prompt, key, 2048))
 
 
 def get_similar_examples(promo: dict, all_promos: list[dict], n: int = 5) -> list[dict]:
@@ -3312,3 +3705,216 @@ def get_similar_examples(promo: dict, all_promos: list[dict], n: int = 5) -> lis
             scored.append((score, p))
     scored.sort(key=lambda x: -x[0])
     return [p for _, p in scored[:n]]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Контентные акции (коммуникация без финансовых условий)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Маркеры контентной акции в названии
+_CONTENT_MARKERS = (
+    "коммуникац", "тематик", "рассылк", "сериал", "идеи что",
+    "вайб", "контент", "подборка товаров", "гид ", "советы",
+)
+# Финансовые токены — их наличие означает, что это НЕ контентная, а скидочная акция
+_FINANCIAL_MARKERS = (
+    "скидк", "кешб", "кэшб", "cashback", "промокод", "по цене",
+    "дарим", "монет", "подарк", "бонус",
+)
+
+
+def is_content_promo(promo: dict) -> bool:
+    """Контентная акция — это коммуникация/тематическая рассылка без финансовых условий.
+
+    Признаки (по названию промо):
+      • есть маркер коммуникации: «Тематическая рассылка», «Коммуникация»,
+        «Сериал», «Идеи что съесть», «Вайб-рассылка», «Контент», «Подборка товаров»…
+      • НЕТ финансовой выгоды: ни %, ни рублей, ни «скидка/кешбэк/монеты/дарим».
+      • это не сервисный пуш «Баланс баллов» / «Списание».
+    Купон при этом нужен (информационный, без денежного условия).
+    """
+    name = _clean(promo.get("Название промо")).lower()
+    if not name:
+        return False
+    if not any(m in name for m in _CONTENT_MARKERS):
+        return False
+    if "баланс баллов" in name or "списан" in name:
+        return False
+    if any(t in name for t in _FINANCIAL_MARKERS):
+        return False
+    if re.search(r"\d+\s*%", name):
+        return False
+    if re.search(r"\d+\s*(?:р\.?|₽|руб)", name):
+        return False
+    return True
+
+
+# CTA-механика по умолчанию для контентных акций (в текст вшивается ненавязчиво)
+CONTENT_DEFAULT_CTA = "Выбери товар любимым и получи скидку 20%"
+
+# Человекочитаемая аудитория по сегменту (для тона; не фактические утверждения о товарах)
+_CONTENT_AUDIENCE = {
+    "мам": "семьи с детьми",
+    "зоо": "владельцы домашних питомцев",
+    "перекус": "любители готовой еды и снеков",
+    "п/ф": "те, кто готовит быстрые домашние ужины",
+    "пп": "те, кто следит за питанием",
+    "тонус": "любители кофе и энергетиков",
+    "кофе": "любители кофе",
+    "просекко": "любители игристого",
+    "вино": "ценители вина",
+    "пиво": "любители пива",
+}
+
+
+def _content_audience(segment: str) -> str:
+    """Привести сегмент к человекочитаемой аудитории для тона текста."""
+    s = (segment or "").lower()
+    for k, v in _CONTENT_AUDIENCE.items():
+        if k in s:
+            return v
+    return segment or "широкая аудитория"
+
+
+def _build_content_prompt(promo: dict, schedule: list[dict], user_brief: str = "",
+                          cta: str = None) -> str:
+    """Собрать промпт для генерации контента (выпуск + купон + промпт картинки на каждую неделю).
+
+    user_brief — свободные вводные от пользователя; встраиваются в промпт
+    и имеют приоритет над общими требованиями.
+    cta — механика/CTA акции, которую нужно вшить в текст (по умолчанию CONTENT_DEFAULT_CTA;
+    пустая строка — без CTA).
+    """
+    name = _clean(promo.get("Название промо"))
+    segment = _clean(promo.get("Сегмент"))
+    audience = _content_audience(segment)
+    num = _clean(promo.get("НОМЕР"))
+    start = _clean(promo.get("Старт акции"))
+    end = _clean(promo.get("Окончание акции"))
+
+    if cta is None:
+        cta = CONTENT_DEFAULT_CTA
+    cta = (cta or "").strip()
+
+    weeks_text = ""
+    for i, s in enumerate(schedule, 1):
+        weeks_text += f"  Выпуск {i}: дата {s['date']}\n"
+    n = len(schedule)
+
+    # Сезон по первой дате выпуска
+    season = ""
+    if schedule:
+        d0 = schedule[0].get("date_obj") or _parse_date(schedule[0].get("date"))
+        if d0:
+            m = d0.month
+            season = ("зима" if m in (12, 1, 2) else "весна" if m in (3, 4, 5)
+                      else "лето" if m in (6, 7, 8) else "осень")
+
+    brief = (user_brief or "").strip()
+    brief_block = ""
+    if brief:
+        brief_block = (
+            "\nВВОДНЫЕ ОТ ЗАКАЗЧИКА (САМЫЙ ВЫСОКИЙ ПРИОРИТЕТ — учти их строго, "
+            "они важнее общих требований ниже):\n"
+            f"{brief}\n"
+        )
+
+    if cta:
+        cta_line = (f"4. В каждом выпуске органично используй механику акции: «{cta}». "
+                    "Подавай её как приятный бонус по ходу/в конце, не превращай контент в рекламу скидки.")
+        push_must = (f"Обязательно упомяни конкретный продукт, релевантный серии выпуска, "
+                     f"и выгоду по механике («{cta}»).")
+    else:
+        cta_line = ("4. Не делай акцент на скидках и выгоде — это контентная рассылка; "
+                    "выгоду упоминай только если она задана во вводных.")
+        push_must = "Обязательно упомяни конкретный продукт, релевантный серии выпуска."
+
+    return f"""Ты — контент-редактор и копирайтер сети магазинов ДИКСИ. Готовишь регулярную КОНТЕНТНУЮ рассылку для клиентов мобильного приложения.
+
+ВАЖНО: это КОНТЕНТНАЯ (коммуникационная) акция: главное — полезный, тёплый и развлекательный
+контент, который удерживает клиента и формирует привычку заходить в приложение. Это НЕ прямая
+распродажа: контент не должен превращаться в рекламу скидки. Механику акции (если она задана ниже)
+вплетай ненавязчиво, как приятный бонус.
+
+ДАННЫЕ АКЦИИ:
+- Номер: {num}
+- Название (тема): {name}
+- Сегмент: {segment}
+- Аудитория (для тона): {audience}
+- Период: {start}–{end}
+- Сезон: {season or '—'}
+- Количество выпусков: {n} (по одному на каждую неделю периода)
+
+ГРАФИК ВЫПУСКОВ:
+{weeks_text}{brief_block}
+ТРЕБОВАНИЯ К КОНТЕНТУ:
+0. Если выше есть «ВВОДНЫЕ ОТ ЗАКАЗЧИКА» — следуй им в первую очередь; при конфликте с общими требованиями приоритет у вводных (кроме запрета на выдуманные факты).
+1. Пиши под аудиторию «{audience}» — тон, примеры и темы должны быть релевантны именно ей.
+2. Если в теме есть слово «сериал» — сделай выпуски ПОСЛЕДОВАТЕЛЬНЫМИ эпизодами одной истории
+   с единым героем/линией и лёгким крючком-интригой в конце каждого выпуска, чтобы ждали следующий.
+   Иначе — каждый выпуск это самостоятельная свежая идея/подборка по теме.
+3. Учитывай сезон ({season or 'текущий'}), актуальные поводы периода и повседневные продукты магазина у дома (ДИКСИ — это магазин у дома рядом, опирайся на привычные продукты, которые там есть).
+{cta_line}
+5. НЕ выдумывай факты: не указывай конкретные цены, не приписывай товарам несуществующее
+   позиционирование, не утверждай наличие конкретных СТМ-линеек. Пиши о категориях и идеях в общем.
+6. Заголовок пуша (push_title) — максимум 35 символов, РОВНО 1 эмодзи. Текст пуша (push_body) — максимум 120 символов.
+   {push_must} Тон дружелюбный, разговорный, без канцелярита и слова «клиент».
+7. Веди клиента из описания серии в каталог с товарами: придумай короткое цепляющее название кнопки-перехода (поле "button", до ~20 символов).
+8. Описание серии (поле "content") — до 500 символов.
+9. Включай практические советы, полезные для аудитории «{audience}».
+
+ДЛЯ КАЖДОГО ВЫПУСКА верни:
+- "title": название выпуска/серии (яркое, до ~50 символов)
+- "push_title": заголовок пуша (≤35 символов, ровно 1 эмодзи)
+- "push_body": текст пуша (≤120 символов) с конкретным продуктом и выгодой; интригует и зовёт открыть
+- "content": описание серии для карточки в приложении — полезный/развлекательный текст с практическим советом, ДО 500 символов
+- "button": короткое название кнопки-перехода в каталог с товарами (до ~20 символов)
+- "coupon_name": короткое название информационного купона для МП (инфо-карточка к выпуску)
+- "coupon_text": текст на информационном купоне / карточке — тёплый, тематический; механику акции можно упомянуть, но без выдуманных цен и условий
+- "image_prompt": ОТДЕЛЬНЫЙ УНИКАЛЬНЫЙ промпт на русском для нейросети-генератора картинки — свой для каждого выпуска.
+  Он должен отражать сцену, героя и продукты именно ЭТОГО эпизода; не повторяй формулировки между выпусками.
+  Опиши сцену, объекты, композицию, освещение и настроение; картинка современная и аппетитная.
+  Стиль — премиальный, дорогой объёмный 3D-рендер в духе анимации Pixar. Используй ту же фирменную
+  цветовую гамму бренда ДИКСИ, что и в примере (тёплые оранжевый, фиолетовый, зелёный).
+  Картинка БЕЗ встроенного текста и логотипов.
+
+  🚨 ФОРМАТ — СТРОГО ГОРИЗОНТАЛЬНЫЙ БАННЕР 21:9 (широкая, не квадратная и не вертикальная):
+    • Соотношение сторон 21:9 (≈ 2.33:1) — широкоформатный кинематографический кадр.
+    • Композиция растянута по горизонтали: герой/продукт смещён влево или вправо, по бокам пространство.
+    • Камера «панорама»/«широкий план» (cinematic wide shot), а не портрет.
+    • ❌ ЗАПРЕЩЕНО писать в image_prompt слова: «вертикальный», «portrait», «vertical», «9:16», «карточка приложения», «stories», «формат для приложения».
+    • ✅ ОБЯЗАТЕЛЬНО заверши промпт фразой: «горизонтальный баннер 21:9, cinematic widescreen, широкая композиция».
+
+Верни СТРОГО валидный JSON без пояснений:
+{{
+  "theme": "краткое описание темы и идеи рассылки",
+  "audience": "{audience}",
+  "weeks": [
+    {{
+      "week": 1,
+      "date": "{schedule[0]['date'] if schedule else ''}",
+      "title": "...",
+      "push_title": "...",
+      "push_body": "...",
+      "content": "...",
+      "button": "...",
+      "coupon_name": "...",
+      "coupon_text": "...",
+      "image_prompt": "..."
+    }}
+  ]
+}}
+В массиве "weeks" должно быть ровно {n} элемент(ов) — по одному на каждый выпуск из графика, с правильными датами."""
+
+
+def generate_content_promo(promo: dict, schedule: list[dict], user_brief: str = "",
+                           cta: str = None) -> dict:
+    """Сгенерировать контент (выпуски + купоны + промпты картинок) для контентной акции через Claude."""
+    key = ANTHROPIC_API_KEY
+    if not key:
+        raise ValueError("API ключ Anthropic не указан (нужен для генерации контента)")
+
+    promo = _sanitize_promo(promo)
+    prompt = _build_content_prompt(promo, schedule, user_brief, cta)
+
+    return _parse_response(_anthropic_message(prompt, key, 4096))

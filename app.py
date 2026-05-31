@@ -3,6 +3,7 @@
 import ssl
 import certifi
 import os
+import json
 import streamlit as st
 import pandas as pd
 from datetime import date as _date_cls, datetime, timedelta
@@ -16,639 +17,102 @@ except Exception:
     pass
 
 # ─── Page config ─────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="CVM генератор",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="CVM генератор", page_icon="📱", layout="wide")
 
-# ─── Brand design system ─────────────────────────────────────────────────────
+# ─── Modern CSS ──────────────────────────────────────────────────────────────
 st.markdown("""
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ════════════════════════════════════════════════════════════════════
-   DIXY · CVM STUDIO — Brand Design System
-   Aligned with real Dixy brand palette: orange / purple / green
-   ════════════════════════════════════════════════════════════════════ */
-:root {
-    /* Primary — Dixy Orange */
-    --dx-orange:     #EF7C1A;
-    --dx-orange-700: #C8620B;
-    --dx-orange-500: #F2913C;
-    --dx-orange-100: #FDE6CF;
-    --dx-orange-50:  #FFF4E6;
-
-    /* Secondary — Dixy Purple */
-    --dx-purple:     #5E2D8A;
-    --dx-purple-700: #4A2270;
-    --dx-purple-500: #7E4DAE;
-    --dx-purple-100: #E4D6F2;
-    --dx-purple-50:  #F4ECFA;
-
-    /* Tertiary — Dixy Green */
-    --dx-green:      #8BC34A;
-    --dx-green-700:  #6CA13A;
-    --dx-green-500:  #A0D165;
-    --dx-green-100:  #DCEEC4;
-    --dx-green-50:   #F0F8E5;
-
-    /* Cream tint used in Dixy materials */
-    --dx-cream:      #FFF6E0;
-
-    --ink-900: #1F1B2E;
-    --ink-800: #2D2740;
-    --ink-700: #3F3859;
-    --ink-600: #524A6E;
-    --ink-500: #7A7290;
-    --ink-400: #A299B5;
-    --ink-300: #C9C2D6;
-    --ink-200: #E5E0EE;
-    --ink-100: #F2EFF7;
-    --ink-50:  #FAF8FD;
-
-    --surface: #FFFFFF;
-    --bg: #F7F5FB;
-
-    --success-700: #6CA13A;
-    --success-50:  #F0F8E5;
-    --warning-700: #C8620B;
-    --warning-50:  #FFF4E6;
-    --info-700:    #4A2270;
-    --info-50:     #F4ECFA;
-    --danger-700:  #B91C1C;
-    --danger-50:   #FEE2E2;
-
-    --shadow-sm: 0 1px 2px rgba(31,27,46,.05), 0 1px 1px rgba(31,27,46,.03);
-    --shadow-md: 0 4px 12px rgba(31,27,46,.07), 0 2px 4px rgba(31,27,46,.04);
-    --shadow-lg: 0 18px 40px rgba(31,27,46,.10), 0 6px 16px rgba(31,27,46,.05);
-
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
-}
-
-/* ─── Global typography & layout ──────────────────────────────────── */
-html, body, [class*="css"], .stApp, .main, section[data-testid="stSidebar"] {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-    color: var(--ink-800);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-}
-.stApp {
-    background: var(--bg) !important;
-}
-.main .block-container {
-    padding-top: 1.2rem !important;
-    padding-bottom: 4rem !important;
-    max-width: 1400px;
-}
-h1, h2, h3, h4, h5 {
-    font-family: 'Inter', sans-serif !important;
-    color: var(--ink-900) !important;
-    letter-spacing: -0.015em !important;
-    font-weight: 700 !important;
-}
-h1 { font-size: 28px !important; }
-h2 { font-size: 22px !important; }
-h3 { font-size: 18px !important; }
-h4 { font-size: 15px !important; }
-p, label, .stMarkdown { color: var(--ink-700); font-size: 14px; }
-code, pre { font-family: 'JetBrains Mono', monospace !important; font-size: 12.5px; }
-
-/* Hide Streamlit's default chrome */
-#MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden; height: 0; }
-
-/* ─── Sidebar ─────────────────────────────────────────────────────── */
-section[data-testid="stSidebar"] {
-    background: #1F1B2E !important;
-    border-right: 1px solid #2D2740;
-}
-section[data-testid="stSidebar"] > div:first-child {
-    padding-top: 24px;
-}
-section[data-testid="stSidebar"] * { color: #E5E0EE !important; }
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 { color: #FFFFFF !important; }
-section[data-testid="stSidebar"] .stMarkdown p { color: #A299B5 !important; font-size: 12px; }
-
-/* Sidebar nav radio → vertical pill list with orange active */
-section[data-testid="stSidebar"] div[data-testid="stRadio"] > div {
-    flex-direction: column !important;
-    gap: 2px !important;
-}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] > div > label {
-    background: transparent !important;
-    border: 1px solid transparent !important;
-    border-radius: 10px !important;
-    padding: 10px 14px !important;
-    margin: 0 !important;
-    transition: all .15s ease;
-    color: #C9C2D6 !important;
-    font-weight: 500 !important;
-    font-size: 13.5px !important;
-    position: relative;
-}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] > div > label:hover {
-    background: rgba(255,255,255,.04) !important;
-    color: #FFFFFF !important;
-}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] > div > label[data-checked="true"] {
-    background: rgba(239,124,26,.14) !important;
-    color: #FFFFFF !important;
-    border-color: rgba(239,124,26,.30) !important;
-}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] > div > label[data-checked="true"]::before {
-    content: "";
-    position: absolute;
-    left: -10px;
-    top: 10px;
-    bottom: 10px;
-    width: 3px;
-    border-radius: 0 3px 3px 0;
-    background: var(--dx-orange);
-}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] > div > label > div:first-child {
-    display: none !important;
-}
-
-/* Sidebar button */
-section[data-testid="stSidebar"] .stButton > button {
-    background: rgba(255,255,255,.04) !important;
-    color: #E5E7EB !important;
-    border: 1px solid rgba(255,255,255,.10) !important;
-    border-radius: 10px !important;
-    font-weight: 500 !important;
-    font-size: 12.5px !important;
-    padding: 8px 12px !important;
-    transition: all .15s ease;
-}
-section[data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(255,255,255,.08) !important;
-    border-color: rgba(255,255,255,.18) !important;
-}
-section[data-testid="stSidebar"] .stExpander {
-    background: rgba(255,255,255,.02) !important;
-    border: 1px solid rgba(255,255,255,.06) !important;
-    border-radius: 10px !important;
-}
-section[data-testid="stSidebar"] input,
-section[data-testid="stSidebar"] textarea {
-    background: rgba(255,255,255,.04) !important;
-    color: #F8FAFC !important;
-    border: 1px solid rgba(255,255,255,.10) !important;
-    border-radius: 8px !important;
-}
-
-/* ─── Metric cards — McKinsey style ──────────────────────────────── */
+/* Gradient metrics */
 div[data-testid="stMetric"] {
-    background: var(--surface) !important;
-    border: 1px solid var(--ink-200);
-    border-left: 3px solid var(--dx-orange);
-    border-radius: var(--radius-md);
-    padding: 16px 20px !important;
-    box-shadow: var(--shadow-sm);
-    transition: all .18s ease;
-}
-div[data-testid="stMetric"]:hover {
-    box-shadow: var(--shadow-md);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 16px 20px;
+    color: white !important;
 }
 div[data-testid="stMetric"] label {
-    color: var(--ink-500) !important;
-    font-size: 11.5px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.08em !important;
+    color: rgba(255,255,255,0.85) !important;
 }
 div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-    color: var(--ink-900) !important;
-    font-size: 30px !important;
+    color: white !important;
+    font-size: 28px !important;
     font-weight: 700 !important;
-    letter-spacing: -0.02em !important;
-    line-height: 1.1 !important;
-    margin-top: 4px !important;
-}
-div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
-    font-size: 12px !important;
-    font-weight: 500 !important;
 }
 
-/* ─── Buttons ─────────────────────────────────────────────────────── */
+/* Rounded buttons */
 .stButton > button {
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-    font-size: 13.5px !important;
-    padding: 9px 16px !important;
-    border: 1px solid var(--ink-200) !important;
-    background: var(--surface) !important;
-    color: var(--ink-800) !important;
-    transition: all .15s ease;
-    box-shadow: var(--shadow-sm);
-}
-.stButton > button:hover {
-    background: var(--ink-50) !important;
-    border-color: var(--ink-300) !important;
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
-}
-.stButton > button[kind="primary"],
-.stButton > button[data-testid="baseButton-primary"] {
-    background: var(--dx-orange) !important;
-    color: #fff !important;
-    border-color: var(--dx-orange) !important;
-    box-shadow: 0 6px 14px rgba(239,124,26,.30);
-}
-.stButton > button[kind="primary"]:hover,
-.stButton > button[data-testid="baseButton-primary"]:hover {
-    background: var(--dx-orange-700) !important;
-    border-color: var(--dx-orange-700) !important;
-    box-shadow: 0 10px 20px rgba(239,124,26,.35);
-}
-
-/* ─── Inputs (text, select, textarea, date) ──────────────────────── */
-.stTextInput input,
-.stTextArea textarea,
-.stNumberInput input,
-.stDateInput input,
-div[data-baseweb="select"] > div {
-    background: var(--surface) !important;
-    border: 1px solid var(--ink-200) !important;
-    border-radius: 10px !important;
-    color: var(--ink-900) !important;
-    font-size: 13.5px !important;
-    transition: all .15s ease;
-}
-.stTextInput input:focus,
-.stTextArea textarea:focus,
-.stNumberInput input:focus,
-.stDateInput input:focus,
-div[data-baseweb="select"]:focus-within > div {
-    border-color: var(--dx-orange) !important;
-    box-shadow: 0 0 0 3px rgba(239,124,26,.14) !important;
-}
-.stTextInput label, .stTextArea label, .stNumberInput label,
-.stSelectbox label, .stDateInput label, .stMultiSelect label,
-.stRadio > label, .stCheckbox > label {
-    color: var(--ink-700) !important;
-    font-size: 12.5px !important;
-    font-weight: 600 !important;
-}
-
-/* ─── Radio as segmented control (main area, not sidebar) ────────── */
-.main div[data-testid="stRadio"] > div {
-    flex-direction: row !important;
-    gap: 0 !important;
-    background: var(--surface);
-    padding: 5px;
     border-radius: 12px;
-    border: 1px solid var(--ink-200);
-    display: inline-flex !important;
-    width: fit-content;
-    box-shadow: var(--shadow-sm);
+    font-weight: 600;
 }
-.main div[data-testid="stRadio"] > div > label {
-    background: transparent !important;
-    border: none !important;
-    border-radius: 8px !important;
-    padding: 8px 18px !important;
-    margin: 0 !important;
-    color: var(--ink-600) !important;
-    font-weight: 600 !important;
-    font-size: 13px !important;
-    transition: all .18s ease;
+
+/* Dark sidebar */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1e1e2f 0%, #2d2d44 100%);
+}
+section[data-testid="stSidebar"] * {
+    color: #e0e0e0 !important;
+}
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stRadio label {
+    color: #e0e0e0 !important;
+}
+/* Кнопки в sidebar — тёмные, как остальные элементы */
+section[data-testid="stSidebar"] .stButton > button {
+    background: rgba(255,255,255,0.08) !important;
+    color: #e0e0e0 !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+}
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(255,255,255,0.15) !important;
+    border-color: rgba(255,255,255,0.3) !important;
+}
+
+/* Gradient progress bar */
+.stProgress > div > div {
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
+    border-radius: 8px;
+}
+
+/* Radio as tab-style buttons (no markers) */
+div[data-testid="stRadio"] > div {
+    flex-direction: row !important;
+    gap: 4px;
+}
+div[data-testid="stRadio"] > div > label {
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 8px 16px;
     cursor: pointer;
-    letter-spacing: -0.005em;
+    border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.2s;
 }
-.main div[data-testid="stRadio"] > div > label:hover {
-    color: var(--dx-orange-700) !important;
-    background: var(--dx-orange-50) !important;
+div[data-testid="stRadio"] > div > label:hover {
+    background: rgba(255,255,255,0.12);
 }
-.main div[data-testid="stRadio"] > div > label[data-checked="true"] {
-    background: var(--dx-orange) !important;
-    color: #fff !important;
-    box-shadow: 0 4px 10px rgba(239,124,26,.30);
+div[data-testid="stRadio"] > div > label[data-checked="true"] {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-color: transparent;
 }
-.main div[data-testid="stRadio"] > div > label[data-checked="true"]:hover {
-    background: var(--dx-orange-700) !important;
-    color: #fff !important;
-}
-.main div[data-testid="stRadio"] > div > label > div:first-child {
+div[data-testid="stRadio"] > div > label > div:first-child {
     display: none !important;
 }
-
-/* ─── Tabs — underline style (McKinsey/Stripe) ────────────────────── */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
-    background: transparent;
-    padding: 0 0 0 0;
-    border-radius: 0;
-    border: none;
-    border-bottom: 1px solid var(--ink-200);
-    margin-bottom: 18px;
-}
-.stTabs [data-baseweb="tab"] {
-    height: 42px !important;
-    padding: 0 18px !important;
-    background: transparent !important;
-    border-radius: 0 !important;
-    color: var(--ink-500) !important;
-    font-weight: 600 !important;
-    font-size: 14px !important;
-    border-bottom: 2px solid transparent !important;
-    margin-bottom: -1px !important;
-    transition: all .15s ease;
-}
-.stTabs [data-baseweb="tab"]:hover {
-    color: var(--ink-900) !important;
-}
-.stTabs [aria-selected="true"] {
-    background: transparent !important;
-    color: var(--dx-orange-700) !important;
-    border-bottom: 2px solid var(--dx-orange) !important;
-}
-
-/* ─── Multiselect chips ──────────────────────────────────────────── */
-div[data-baseweb="select"] [data-baseweb="tag"] {
-    background: var(--dx-purple-50) !important;
-    border: 1px solid var(--dx-purple-100) !important;
-    color: var(--dx-purple-700) !important;
-    border-radius: 999px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-}
-
-/* ─── Toggle / switch ─────────────────────────────────────────────── */
-label[data-baseweb="checkbox"] > div:first-child {
-    border-radius: 5px !important;
-}
-input:checked + div[role="switch"],
-[data-baseweb="checkbox"][aria-checked="true"] > div:first-child {
-    background: var(--dx-orange) !important;
-    border-color: var(--dx-orange) !important;
-}
-
-/* ─── Expander as card ────────────────────────────────────────────── */
-.streamlit-expanderHeader, details > summary {
-    background: var(--surface) !important;
-    border: 1px solid var(--ink-200) !important;
-    border-radius: var(--radius-md) !important;
-    padding: 12px 16px !important;
-    font-weight: 600 !important;
-    color: var(--ink-800) !important;
-    font-size: 14px !important;
-    transition: all .15s ease;
-}
-.streamlit-expanderHeader:hover {
-    border-color: var(--dx-orange) !important;
-    box-shadow: var(--shadow-sm);
-}
-div[data-testid="stExpander"] {
-    background: var(--surface);
-    border-radius: var(--radius-md);
-    overflow: hidden;
-    margin-bottom: 10px;
-}
-div[data-testid="stExpander"] > details {
-    border: 1px solid var(--ink-200);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-}
-div[data-testid="stExpander"] > details[open] {
-    box-shadow: var(--shadow-md);
-}
-div[data-testid="stExpander"] > details > summary {
-    border: none !important;
-    box-shadow: none !important;
-}
-
-/* Bordered containers as proper cards */
-div[data-testid="stContainer"][class*="st-emotion"] {
-    border-radius: var(--radius-md);
-}
-div[data-testid="stVerticalBlockBorderWrapper"] {
-    border: 1px solid var(--ink-200) !important;
-    border-radius: var(--radius-md) !important;
-    background: var(--surface) !important;
-    box-shadow: var(--shadow-sm) !important;
-    padding: 6px !important;
-}
-
-/* ─── Progress bar — Dixy orange ──────────────────────────────────── */
-.stProgress > div > div {
-    background: linear-gradient(90deg, var(--dx-orange) 0%, var(--dx-orange-500) 100%) !important;
-    border-radius: 999px !important;
-    height: 8px !important;
-}
-.stProgress {
-    background: var(--ink-100);
-    border-radius: 999px;
-}
-
-/* ─── Alerts (info/warning/success/error) ────────────────────────── */
-div[data-baseweb="notification"],
-.stAlert {
-    border-radius: var(--radius-md) !important;
-    border: 1px solid transparent !important;
-    box-shadow: var(--shadow-sm) !important;
-    padding: 12px 16px !important;
-}
-div[data-testid="stAlert"][kind="info"],
-.stAlert[data-baseweb="notification"][kind="info"] {
-    background: var(--info-50) !important;
-    border-color: rgba(30,64,175,.20) !important;
-    color: var(--info-700) !important;
-}
-div[data-testid="stAlert"][kind="success"] {
-    background: var(--success-50) !important;
-    border-color: rgba(4,120,87,.20) !important;
-    color: var(--success-700) !important;
-}
-div[data-testid="stAlert"][kind="warning"] {
-    background: var(--warning-50) !important;
-    border-color: rgba(146,64,14,.20) !important;
-    color: var(--warning-700) !important;
-}
-div[data-testid="stAlert"][kind="error"] {
-    background: var(--danger-50) !important;
-    border-color: rgba(185,28,28,.20) !important;
-    color: var(--danger-700) !important;
-}
-
-/* ─── DataFrame ───────────────────────────────────────────────────── */
-.stDataFrame, div[data-testid="stDataFrame"] {
-    border-radius: var(--radius-md) !important;
-    border: 1px solid var(--ink-200) !important;
-    overflow: hidden;
-    box-shadow: var(--shadow-sm);
-}
-
-/* ─── Captions ────────────────────────────────────────────────────── */
-.stCaption, p.caption, [data-testid="stCaptionContainer"] {
-    color: var(--ink-500) !important;
-    font-size: 12.5px !important;
-}
-
-/* ─── Section title (used on each page) ──────────────────────────── */
-.dx-section {
-    margin: 6px 0 20px 0;
-}
-.dx-section-eyebrow {
-    text-transform: uppercase;
-    letter-spacing: 0.10em;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--dx-orange);
-    margin-bottom: 6px;
-}
-.dx-section-title {
-    font-size: 26px;
-    font-weight: 700;
-    color: var(--ink-900);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    margin: 0;
-}
-.dx-section-sub {
-    color: var(--ink-500);
-    font-size: 13.5px;
-    margin-top: 6px;
-    max-width: 720px;
-}
-
-/* ─── Phone preview (push mockup) ─────────────────────────────────── */
-.dx-phone {
-    width: 320px;
-    background: linear-gradient(180deg, #1F2937 0%, #0F172A 100%);
-    border-radius: 36px;
-    padding: 14px;
-    box-shadow: 0 24px 60px rgba(15,23,42,.35), 0 4px 12px rgba(15,23,42,.10);
-    position: relative;
-}
-.dx-phone-notch {
-    width: 96px;
-    height: 22px;
-    background: #000;
-    border-radius: 0 0 16px 16px;
-    margin: -14px auto 10px auto;
-}
-.dx-phone-screen {
-    background: linear-gradient(160deg, #5B7FD7 0%, #C76FA8 50%, #E89B61 100%);
-    border-radius: 24px;
-    min-height: 380px;
-    padding: 18px 10px 10px 10px;
-    position: relative;
-}
-.dx-phone-time {
-    color: #fff;
-    font-weight: 700;
-    font-size: 38px;
-    text-align: center;
-    letter-spacing: -0.02em;
-    text-shadow: 0 2px 6px rgba(0,0,0,.25);
-    margin-bottom: 4px;
-}
-.dx-phone-date {
-    color: rgba(255,255,255,.92);
-    font-weight: 500;
-    font-size: 12px;
-    text-align: center;
-    margin-bottom: 18px;
-    text-shadow: 0 1px 3px rgba(0,0,0,.20);
-}
-.dx-push {
-    background: rgba(255,255,255,.78);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-radius: 16px;
-    padding: 10px 12px;
-    margin: 8px 4px;
-    box-shadow: 0 4px 14px rgba(0,0,0,.10);
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-}
-.dx-push-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 9px;
-    background: var(--dx-orange);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 800;
-    font-size: 16px;
-    flex: 0 0 36px;
-    box-shadow: 0 4px 10px rgba(239,124,26,.30);
-}
-.dx-push-body { flex: 1; min-width: 0; }
-.dx-push-app {
-    font-size: 10.5px;
-    font-weight: 600;
-    color: #1F2937;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 2px;
-}
-.dx-push-time { color: #475569; font-weight: 500; }
-.dx-push-title {
-    font-size: 13.5px;
-    font-weight: 600;
-    color: #0B1220;
-    line-height: 1.25;
-    margin-bottom: 2px;
-    word-wrap: break-word;
-}
-.dx-push-text {
-    font-size: 12.5px;
-    color: #1F2937;
-    line-height: 1.35;
-    word-wrap: break-word;
-}
-
-/* ─── Misc polish ─────────────────────────────────────────────────── */
-hr { border-color: var(--ink-200) !important; margin: 18px 0 !important; }
-.stCheckbox > label > div:first-child {
-    border-radius: 5px !important;
-}
-/* Scrollbars */
-*::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-thumb { background: var(--ink-300); border-radius: 999px; }
-*::-webkit-scrollbar-thumb:hover { background: var(--ink-400); }
-*::-webkit-scrollbar-track { background: transparent; }
 </style>
 """, unsafe_allow_html=True)
 
-
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
-st.sidebar.markdown(
-    '<div style="font-size:11px; font-weight:700; letter-spacing:0.12em; '
-    'text-transform:uppercase; color:#A299B5; padding:8px 6px 10px 6px;">'
-    'Навигация</div>',
-    unsafe_allow_html=True,
-)
-
 _nav_page = st.sidebar.radio(
     "Навигация",
-    ["План", "Условия акций", "Генерация PUSH",
-     "Прогноз", "Идеи акций",
-     "Типы акций", "Правила генерации", "Deeplinks"],
+    ["📅 План", "🔧 Условия акций", "✨ Генерация PUSH", "🎬 Контентные акции",
+     "📋 Типы акций", "📝 Правила генерации", "🔗 Deeplinks"],
     label_visibility="collapsed",
 )
 
-st.sidebar.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
-
-if st.sidebar.button("Обновить данные из Google", key="global_refresh", use_container_width=True):
+if st.sidebar.button("🔄 Обновить данные из Google", key="global_refresh", use_container_width=True):
     load_cvm_data.clear()
     load_push_data.clear()
+    load_red_marked_promos.clear()
     st.rerun()
 
-with st.sidebar.expander("Настройки", expanded=False):
+with st.sidebar.expander("⚙️ Настройки", expanded=False):
     spreadsheet_id = st.text_input(
         "Spreadsheet ID",
         value="1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY",
@@ -729,6 +193,67 @@ def load_cvm_data(sid: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
+def load_red_marked_promos(sid: str) -> set:
+    """Вернуть множество НОМЕРов акций, у которых в Google Sheets ячейка
+    «НОМЕР» физически выделена красным/розовым фоном (ручная пометка
+    в листе «CVM offline»).
+
+    Красный детектируется как: красная компонента доминирует, при этом
+    зелёная и синяя — близкие между собой (это отбрасывает оранжевый и
+    жёлтый, в которых зелёная заметно выше синей).
+    """
+    cred_path = "credentials/service_account.json"
+    if not os.path.exists(cred_path):
+        return set()
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds = Credentials.from_service_account_file(cred_path, scopes=scopes)
+        client = gspread.authorize(creds)
+        ss = client.open_by_key(sid)
+        md = ss.fetch_sheet_metadata(params={
+            "ranges": "'CVM offline'!B2:B2000",
+            "includeGridData": "true",
+            "fields": ("sheets.data.rowData.values.effectiveFormat.backgroundColor,"
+                       "sheets.data.rowData.values.effectiveValue"),
+        })
+        red_nums: set = set()
+        sheets = md.get("sheets", []) if isinstance(md, dict) else []
+        if not sheets:
+            return red_nums
+        data = sheets[0].get("data", [])
+        if not data:
+            return red_nums
+        for r in data[0].get("rowData", []):
+            cells = r.get("values", [])
+            if not cells:
+                continue
+            cell = cells[0]
+            bg = cell.get("effectiveFormat", {}).get("backgroundColor", {}) or {}
+            rd = float(bg.get("red", 0) or 0)
+            gn = float(bg.get("green", 0) or 0)
+            bl = float(bg.get("blue", 0) or 0)
+            # «Красный»: красная компонента доминирует, зелёная и синяя близки
+            # (исключает оранжевый/жёлтый, где зелёная сильно выше синей).
+            if rd > 0.7 and rd > gn + 0.08 and rd > bl + 0.08 and abs(gn - bl) < 0.15:
+                ev = cell.get("effectiveValue", {}) or {}
+                num_val = ev.get("numberValue", ev.get("stringValue"))
+                if num_val is None:
+                    continue
+                if isinstance(num_val, float):
+                    red_nums.add(str(int(num_val)))
+                else:
+                    red_nums.add(str(num_val).strip())
+        return red_nums
+    except Exception:
+        return set()
+
+
+@st.cache_data(ttl=300)
 def load_push_data(sid: str) -> pd.DataFrame:
     """Загрузить PUSH tab через gspread, fallback на CSV."""
     cred_path = "credentials/service_account.json"
@@ -796,6 +321,7 @@ def save_to_sheets(rows: list, sid: str):
     ws = ss.worksheet("PUSH")
     headers = ws.row_values(1)
 
+    all_rows = []
     for row_data in rows:
         row_values = [str(row_data.get(h, "")) for h in headers]
         # Special handling: column index 14 = title_len, column index 16 = body_len
@@ -803,27 +329,77 @@ def save_to_sheets(rows: list, sid: str):
             row_values[14] = str(row_data["__title_len"])
         if len(row_values) > 16 and "__body_len" in row_data:
             row_values[16] = str(row_data["__body_len"])
-        ws.append_row(row_values, value_input_option="USER_ENTERED")
+        all_rows.append(row_values)
+
+    # Один append_rows вместо append_row в цикле:
+    # иначе каждая строка = отдельный write-запрос и квота Sheets (429).
+    if all_rows:
+        ws.append_rows(all_rows, value_input_option="USER_ENTERED")
 
     return True
 
 
+# ─── Локальный черновик условий (переживает F5 / перезапуск сервера) ──────────
+
+CONDITIONS_DRAFT_PATH = "cache/conditions_draft.json"
+PROMO_SKUS_PATH = "data/promo_skus.json"
+
+
+@st.cache_data(show_spinner=False)
+def _load_promo_skus_map() -> dict:
+    """Загрузить data/promo_skus.json и вернуть {promo_num: 'cat5 cat5 ...'}.
+
+    В поле «Категории» — только плоский перечень cat5_ext через пробел, без
+    названий подгрупп и без запятых (требование формата для CVM offline).
+    Дедуплицируем коды, порядок — как в JSON.
+    """
+    try:
+        with open(PROMO_SKUS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {}
+    out = {}
+    for pid, p in data.items():
+        if pid.startswith("_"):
+            continue
+        cats: list[int] = []
+        seen: set[int] = set()
+        for ing in p.get("ingredients", []):
+            for c in ing.get("cats", []):
+                if c in seen:
+                    continue
+                seen.add(c)
+                cats.append(c)
+        out[str(pid)] = "\n".join(str(c) for c in cats)
+    return out
+
+
+def save_conditions_draft(results):
+    """Сохранить текущие условия на диск, чтобы правки не терялись при сбросе сессии."""
+    try:
+        os.makedirs(os.path.dirname(CONDITIONS_DRAFT_PATH), exist_ok=True)
+        with open(CONDITIONS_DRAFT_PATH, "w", encoding="utf-8") as f:
+            json.dump(
+                {"saved_at": datetime.now().isoformat(timespec="seconds"),
+                 "results": results},
+                f, ensure_ascii=False,
+            )
+        return True
+    except Exception:
+        return False
+
+
+def load_conditions_draft():
+    """Вернуть (results, saved_at) из локального черновика или (None, None)."""
+    try:
+        with open(CONDITIONS_DRAFT_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("results"), data.get("saved_at")
+    except Exception:
+        return None, None
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
-
-def dx_page_header(eyebrow: str, title: str, sub: str = ""):
-    """Brand-aligned page header used at the top of every page."""
-    _sub = f'<div class="dx-section-sub">{sub}</div>' if sub else ""
-    st.markdown(
-        f"""
-        <div class="dx-section">
-          <div class="dx-section-eyebrow">{eyebrow}</div>
-          <div class="dx-section-title">{title}</div>
-          {_sub}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 
 def _parse_promo_date(date_str, year=2026):
     """Парсит 'DD.MM.' или 'DD.MM' в date."""
@@ -863,12 +439,7 @@ def _norm_num(x):
 #  PAGE: 📅 План (Gantt)
 # ═════════════════════════════════════════════════════════════════════════════
 
-if _nav_page == "План":
-    dx_page_header(
-        "Календарь кампаний",
-        "План акций месяца",
-        "Диаграмма Ганта по сегментам с привязкой push-сообщений к датам отправки.",
-    )
+if _nav_page == "📅 План":
     sid = st.session_state.get("spreadsheet_id",
                                 "1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY")
 
@@ -902,7 +473,7 @@ if _nav_page == "План":
                 _plan_ym = [(2026, 4)]
             month_options = [f"{_MONTH_NAMES_PLAN.get(m, str(m))} {y}" for y, m in _plan_ym]
             # Дефолт — последний (самый поздний) месяц списка
-            _plan_default = len(month_options) - 1 if month_options else 0
+            _plan_default = len(_plan_ym) - 1
             selected_month_str = st.selectbox("Месяц", month_options, index=_plan_default, key="plan_month")
 
         # Parse selected month to date range
@@ -944,6 +515,10 @@ if _nav_page == "План":
 
         # Load PUSH data
         df_push = load_push_data(sid)
+
+        # Подтягиваем номера акций, физически выделенных красным/розовым фоном
+        # в Google Sheets — это ручная метка «не запущена».
+        _red_marked_set = load_red_marked_promos(sid)
 
         # Build push message map: (promo_num, date_obj) -> [msg_numbers]
         _push_msg_map = {}
@@ -1000,15 +575,16 @@ if _nav_page == "План":
                 start_d, end_d = end_d, start_d
 
             # Status logic
+            #   empty       — НОМЕР физически выделен красным/розовым фоном в Google Sheets
+            #                  (ручная пометка «не запущена»), красный
+            #   conditions  — условия заполнены, но push ещё нет / акция не завершена, жёлтый
+            #   done        — push создан (PUSH-канал) или акция завершилась (другие каналы), зелёный
             is_push_channel = channel.strip().upper() == "PUSH"
-            if is_push_channel:
-                has_push = any(k[0] == num and msgs for k, msgs in _push_msg_map.items())
-                if has_push:
-                    status = "done"
-                elif end_d < today:
-                    status = "empty"
-                else:
-                    status = "conditions"
+            if num in _red_marked_set:
+                status = "empty"
+            elif is_push_channel:
+                has_push = any(k[0] == num for k in _push_msg_map.keys())
+                status = "done" if has_push else "conditions"
             else:
                 status = "done" if end_d < today else "conditions"
 
@@ -1054,150 +630,91 @@ if _nav_page == "План":
 
             show_channel = (selected_channel == "Все")
 
-            # Brand-aligned palette for Gantt
-            BG_HEADER = "#F8FAFC"
-            BG_WKND   = "#FFFBEB"
-            BORDER    = "#E2E8F0"
-            BORDER_WK = "#FCD34D"
-            INK_500   = "#64748B"
-            INK_900   = "#0B1220"
-
-            status_palette = {
-                "done":       {"bg": "#ECFDF5", "fg": "#047857"},
-                "conditions": {"bg": "#FFFBEB", "fg": "#92400E"},
-                "empty":      {"bg": "#FEF2F2", "fg": "#991B1B"},
-            }
-
-            html  = '<div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:12px; background:#fff; box-shadow:0 1px 2px rgba(15,23,42,.04);">'
-            html += '<table style="border-collapse:separate; border-spacing:0; font-size:11px; width:100%; font-family:Inter,-apple-system,sans-serif;">'
+            html = '<div style="overflow-x:auto;">'
+            html += '<table style="border-collapse:collapse; font-size:10px; width:100%;">'
 
             # Header row: dates
             html += '<tr>'
-            html += (
-                f'<th style="padding:10px 12px; border-bottom:1px solid {BORDER}; '
-                f'position:sticky; left:0; background:{BG_HEADER}; z-index:2; '
-                f'min-width:200px; text-align:left; font-weight:700; font-size:11.5px; '
-                f'color:{INK_900}; letter-spacing:-0.005em;">Акция</th>'
-            )
+            html += '<th style="padding:2px 4px; border:1px solid #ddd; position:sticky; left:0; background:#f8f9fa; z-index:2; min-width:180px;">Акция</th>'
             if show_channel:
-                html += (
-                    f'<th style="padding:10px 8px; border-bottom:1px solid {BORDER}; '
-                    f'background:{BG_HEADER}; min-width:48px; font-weight:700; '
-                    f'font-size:10.5px; color:{INK_500}; text-transform:uppercase; '
-                    f'letter-spacing:0.06em;">Канал</th>'
-                )
+                html += '<th style="padding:2px 4px; border:1px solid #ddd; background:#f8f9fa; min-width:40px;">Канал</th>'
             for dt in all_dates:
                 is_weekend = dt.weekday() >= 5
-                bg = BG_WKND if is_weekend else BG_HEADER
-                fg = "#92400E" if is_weekend else INK_900
-                html += (
-                    f'<th style="padding:6px 0; border-bottom:1px solid {BORDER}; '
-                    f'background:{bg}; text-align:center; min-width:22px; '
-                    f'font-weight:700; font-size:11px; color:{fg};">{dt.day}</th>'
-                )
+                bg = "#fff3cd" if is_weekend else "#f8f9fa"
+                border_style = "2px solid #ffc107" if is_weekend else "1px solid #ddd"
+                html += f'<th style="padding:1px 2px; border:{border_style}; background:{bg}; text-align:center; min-width:18px;">{dt.day}</th>'
             html += '</tr>'
 
             # Day of week header
             _DOW_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
             html += '<tr>'
-            html += (
-                f'<td style="border-bottom:1px solid {BORDER}; background:{BG_HEADER}; '
-                f'position:sticky; left:0; z-index:2; padding:0 12px 8px 12px;"></td>'
-            )
+            html += '<td style="border:1px solid #ddd; background:#f8f9fa; position:sticky; left:0; z-index:2;"></td>'
             if show_channel:
-                html += f'<td style="border-bottom:1px solid {BORDER}; background:{BG_HEADER};"></td>'
+                html += '<td style="border:1px solid #ddd; background:#f8f9fa;"></td>'
             for dt in all_dates:
                 is_weekend = dt.weekday() >= 5
-                bg = BG_WKND if is_weekend else BG_HEADER
-                fg = "#B45309" if is_weekend else "#94A3B8"
-                html += (
-                    f'<td style="padding:0 0 6px 0; border-bottom:1px solid {BORDER}; '
-                    f'background:{bg}; text-align:center; font-size:9.5px; '
-                    f'color:{fg}; font-weight:600; text-transform:uppercase; '
-                    f'letter-spacing:0.05em;">{_DOW_SHORT[dt.weekday()]}</td>'
-                )
+                bg = "#fff3cd" if is_weekend else "#f8f9fa"
+                border_style = "2px solid #ffc107" if is_weekend else "1px solid #ddd"
+                html += f'<td style="padding:1px 2px; border:{border_style}; background:{bg}; text-align:center; font-size:10px; color:#888;">{_DOW_SHORT[dt.weekday()]}</td>'
             html += '</tr>'
 
             # Promo rows grouped by segment
             for seg_name, seg_rows in segments_dict.items():
+                # Segment header
                 col_span = 1 + (1 if show_channel else 0) + len(all_dates)
-                html += (
-                    f'<tr><td colspan="{col_span}" style="padding:10px 14px; '
-                    f'border-top:1px solid {BORDER}; border-bottom:1px solid {BORDER}; '
-                    f'background:#FAFBFC; font-weight:700; font-size:11.5px; '
-                    f'color:{INK_900}; text-transform:uppercase; '
-                    f'letter-spacing:0.06em;">{seg_name}</td></tr>'
-                )
+                html += f'<tr><td colspan="{col_span}" style="padding:6px 8px; border:1px solid #ddd; background:#e8eaf6; font-weight:bold;">{seg_name}</td></tr>'
 
                 for g in seg_rows:
-                    pal = status_palette.get(g["status"], {"bg": "#FFFFFF", "fg": INK_900})
-                    row_bg = pal["bg"]
-                    row_fg = pal["fg"]
-                    name_cell = (
-                        f'<td style="padding:8px 12px; border-bottom:1px solid {BORDER}; '
-                        f'background:{row_bg}; white-space:nowrap; overflow:hidden; '
-                        f'text-overflow:ellipsis; max-width:220px; font-weight:600; '
-                        f'font-size:12px; color:{INK_900};" title="{g["name"]}">'
-                        f'<span style="display:inline-block; width:6px; height:6px; '
-                        f'border-radius:50%; background:{row_fg}; margin-right:8px; '
-                        f'vertical-align:middle;"></span>{g["name"]}</td>'
-                    )
+                    status_colors = {
+                        "done": "#c8e6c9",
+                        "conditions": "#fff9c4",
+                        "empty": "#ffcdd2",
+                    }
+                    row_bg = status_colors.get(g["status"], "#ffffff")
+                    _is_empty = g["status"] == "empty"
+                    # Маркер «не запущена» в той же бледно-красной палитре, без яркого акцента
+                    _name_cell_extra = "border-left:3px solid #ef9a9a;" if _is_empty else ""
+                    _badge = ('<span style="background:#ffcdd2; color:#c62828; font-size:9px; '
+                              'font-weight:600; padding:1px 6px; border-radius:8px; '
+                              'margin-right:6px;">не запущена</span>') if _is_empty else ""
+
                     html += '<tr>'
-                    html += name_cell
+                    html += (f'<td style="padding:3px 6px; border:1px solid #ddd; '
+                             f'background:{row_bg}; {_name_cell_extra} white-space:nowrap; '
+                             f'overflow:hidden; text-overflow:ellipsis; max-width:260px;" '
+                             f'title="{g["name"]}">{_badge}{g["name"]}</td>')
                     if show_channel:
-                        html += (
-                            f'<td style="padding:8px; border-bottom:1px solid {BORDER}; '
-                            f'background:{row_bg}; font-size:10.5px; color:{INK_500}; '
-                            f'font-weight:600; text-transform:uppercase; '
-                            f'letter-spacing:0.06em;">{g["channel"]}</td>'
-                        )
+                        html += f'<td style="padding:3px 6px; border:1px solid #ddd; background:{row_bg}; font-size:11px;">{g["channel"]}</td>'
 
                     for dt in all_dates:
                         is_weekend = dt.weekday() >= 5
-                        cell_border = f'border-bottom:1px solid {BORDER};'
-                        if is_weekend:
-                            cell_border += f' background-image:linear-gradient(rgba(252,211,77,.10), rgba(252,211,77,.10));'
+                        border_style = "2px solid #ffc107" if is_weekend else "1px solid #ddd"
 
                         in_range = g["start"] <= dt <= g["end"]
                         push_key = (g["num"], dt)
                         msgs_list = _push_msg_map.get(push_key, []) if g.get("channel", "").upper() == "PUSH" else []
 
                         if msgs_list:
+                            # Blue cells with message numbers
                             msg_text = ",".join(msgs_list)
-                            html += (
-                                f'<td style="padding:2px; {cell_border} background:#FDE6CF; '
-                                f'text-align:center; font-size:10px; font-weight:700; '
-                                f'color:#C8620B;" title="Push {msg_text}">{msg_text}</td>'
-                            )
+                            html += f'<td style="padding:1px; border:{border_style}; background:#bbdefb; text-align:center; font-size:10px; font-weight:bold; color:#1565c0;" title="Push {msg_text}">{msg_text}</td>'
                         elif in_range:
-                            html += (
-                                f'<td style="padding:2px; {cell_border} background:{row_bg};">'
-                                f'<div style="height:6px; background:{row_fg}; opacity:.55; '
-                                f'border-radius:2px; margin:6px 1px;"></div></td>'
-                            )
+                            html += f'<td style="padding:1px; border:{border_style}; background:{row_bg};"></td>'
                         else:
-                            html += f'<td style="padding:2px; {cell_border}"></td>'
+                            html += f'<td style="padding:1px; border:{border_style};"></td>'
                     html += '</tr>'
 
             html += '</table></div>'
 
             st.markdown(html, unsafe_allow_html=True)
 
-            # Legend — pill style
+            # Legend
             st.markdown("""
-            <div style="margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-                <span style="display:inline-flex; align-items:center; gap:6px; background:#ECFDF5; color:#047857; border:1px solid rgba(4,120,87,.20); padding:5px 10px; border-radius:999px; font-size:11.5px; font-weight:600;">
-                    <span style="width:7px; height:7px; border-radius:50%; background:#047857;"></span> Готово
-                </span>
-                <span style="display:inline-flex; align-items:center; gap:6px; background:#FFFBEB; color:#92400E; border:1px solid rgba(146,64,14,.20); padding:5px 10px; border-radius:999px; font-size:11.5px; font-weight:600;">
-                    <span style="width:7px; height:7px; border-radius:50%; background:#92400E;"></span> Условия заполнены
-                </span>
-                <span style="display:inline-flex; align-items:center; gap:6px; background:#FEF2F2; color:#991B1B; border:1px solid rgba(153,27,27,.20); padding:5px 10px; border-radius:999px; font-size:11.5px; font-weight:600;">
-                    <span style="width:7px; height:7px; border-radius:50%; background:#991B1B;"></span> Не запущена
-                </span>
-                <span style="display:inline-flex; align-items:center; gap:6px; background:#FDE6CF; color:#C8620B; border:1px solid rgba(200,98,11,.20); padding:5px 10px; border-radius:999px; font-size:11.5px; font-weight:600;">
-                    <span style="width:7px; height:7px; border-radius:50%; background:#EF7C1A;"></span> PUSH с номерами msg
-                </span>
+            <div style="margin-top:12px; font-size:12px;">
+                <span style="display:inline-block; width:16px; height:16px; background:#c8e6c9; border:1px solid #aaa; vertical-align:middle; border-radius:3px;"></span> Готово (push создан / акция завершена)&nbsp;&nbsp;
+                <span style="display:inline-block; width:16px; height:16px; background:#fff9c4; border:1px solid #aaa; vertical-align:middle; border-radius:3px;"></span> Условия заполнены&nbsp;&nbsp;
+                <span style="display:inline-block; width:16px; height:16px; background:#ffcdd2; border:1px solid #aaa; vertical-align:middle; border-radius:3px;"></span> Не запущена (помечена красным в таблице)&nbsp;&nbsp;
+                <span style="display:inline-block; width:16px; height:16px; background:#bbdefb; border:1px solid #aaa; vertical-align:middle; border-radius:3px;"></span> PUSH (с номерами сообщений)
             </div>
             """, unsafe_allow_html=True)
 
@@ -1206,17 +723,13 @@ if _nav_page == "План":
 #  PAGE: 🔧 Условия акций
 # ═════════════════════════════════════════════════════════════════════════════
 
-elif _nav_page == "Условия акций":
-    dx_page_header(
-        "Подготовка кампаний",
-        "Условия акций",
-        "Генерация описаний, скидок, бонусов и купонов для незаполненных акций. Все правки согласовываются и сохраняются в Google Sheets.",
-    )
+elif _nav_page == "🔧 Условия акций":
+    pass  # page loaded
 
     sid = st.session_state.get("spreadsheet_id",
                                 "1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY")
 
-    if st.button("Обновить данные", key="refresh_conditions"):
+    if st.button("🔄 Обновить данные", key="refresh_conditions"):
         load_cvm_data.clear()
 
     df_cvm = load_cvm_data(sid)
@@ -1247,12 +760,7 @@ elif _nav_page == "Условия акций":
             _ym_pairs = sorted(set(_ym_pairs))
             if _ym_pairs:
                 _ym_labels = ["Все"] + [f"{_MONTH_NAMES_COND.get(m, m)} {y}" for y, m in _ym_pairs]
-                # Дефолт — последний (самый поздний) месяц списка
-                _sel_ym = st.selectbox(
-                    "Месяц", _ym_labels,
-                    index=len(_ym_labels) - 1,
-                    key="cond_month_filter",
-                )
+                _sel_ym = st.selectbox("Месяц", _ym_labels, key="cond_month_filter")
                 if _sel_ym != "Все":
                     _idx = _ym_labels.index(_sel_ym) - 1
                     _y, _m = _ym_pairs[_idx]
@@ -1291,7 +799,7 @@ elif _nav_page == "Условия акций":
                 )
             with _col_all:
                 st.markdown("&nbsp;", unsafe_allow_html=True)
-                _gen_one = st.button("Сгенерировать одну", key="gen_cond_one", use_container_width=True)
+                _gen_one = st.button("🎯 Сгенерировать одну", key="gen_cond_one", use_container_width=True)
 
             if _gen_one and _selected_cond_key:
                 try:
@@ -1305,11 +813,10 @@ elif _nav_page == "Условия акций":
                         _res["__row_idx"] = _res["__row_idx"][0] if _res["__row_idx"] else None
                         _res["__promo_num"] = _norm_num(_selected_promo.get("НОМЕР"))
                         _res["__promo_name"] = str(_selected_promo.get("Название промо", ""))
-                    # Заменяем в conditions_results если уже есть, иначе добавляем
-                    _existing = st.session_state.get("conditions_results", [])
-                    _existing = [r for r in _existing if r.get("__promo_num") != _res["__promo_num"]]
-                    _existing.append(_res)
-                    st.session_state.conditions_results = _existing
+                    # «Сгенерировать одну» → показываем только эту акцию,
+                    # не подмешиваем старые результаты массовой генерации/черновика.
+                    st.session_state.conditions_results = [_res]
+                    save_conditions_draft([_res])
                     st.success(f"Сгенерированы условия для {_res['__promo_num']}")
                 except Exception as e:
                     st.error(f"Ошибка: {e}")
@@ -1317,7 +824,7 @@ elif _nav_page == "Условия акций":
             st.markdown("---")
 
             # Generate conditions button
-            if st.button("Сгенерировать условия для всех акций", type="primary", key="gen_conditions"):
+            if st.button("🤖 Сгенерировать условия для ВСЕХ акций (массово)", type="primary", key="gen_conditions"):
                 try:
                     from ai_generator import generate_promo_conditions, get_similar_examples
 
@@ -1340,11 +847,21 @@ elif _nav_page == "Условия акций":
                         progress.progress((idx + 1) / total)
 
                     st.session_state.conditions_results = results
+                    save_conditions_draft(results)
                     st.success(f"Сгенерировано условий: {len(results)}")
                 except ImportError:
                     st.error("Модуль ai_generator не найден")
                 except Exception as e:
                     st.error(f"Ошибка: {e}")
+
+            # Восстановить черновик, если сессия сброшена (F5 / перезапуск сервера)
+            if "conditions_results" not in st.session_state:
+                _draft, _draft_at = load_conditions_draft()
+                if _draft:
+                    st.session_state.conditions_results = _draft
+                    _when = (_draft_at or "").replace("T", " ")
+                    st.info(f"Восстановлены ранее введённые условия из черновика ({_when}). "
+                            "Проверьте поля и сохраните в Google Sheets.")
 
             # Show results with editable fields
             if "conditions_results" in st.session_state:
@@ -1403,6 +920,21 @@ elif _nav_page == "Условия акций":
                                 value=res.get("Срок сгорания бонусов", ""),
                                 key=f"cond_expiry_{i}",
                             )
+                        # ── Поле «Категории» (cat5 для CVM offline) ──
+                        # Принцип: акция-категория → cat5 категории; акция-рецепт → cat5 ингредиентов.
+                        _skus_map = _load_promo_skus_map()
+                        _pre_cats = res.get("Категории") or _skus_map.get(str(res.get("__promo_num", "")), "")
+                        categories_cat5 = st.text_area(
+                            "Категории (cat5 для CVM offline)",
+                            value=_pre_cats,
+                            key=f"cond_categories_{i}",
+                            height=100,
+                            help=(
+                                "Список ингредиент: cat5 (по одному в строке). "
+                                "Для блюд — категории ИНГРЕДИЕНТОВ, не готовых блюд. "
+                                "Для категорийных акций — cat5 самой категории."
+                            ),
+                        )
                         coupon_name = st.text_input(
                             "Название информационного купона для МП",
                             value=res.get("Название информационного купона для МП", ""),
@@ -1428,20 +960,32 @@ elif _nav_page == "Условия акций":
                             "Бонусы": bonus,
                             "Механика": mechanic,
                             "Категория": category,
+                            "Категории": categories_cat5,
                             "Срок сгорания бонусов": expiry,
                             "Название информационного купона для МП": coupon_name,
                             "Текст на информационном купоне / слип-чеке": coupon,
                             "Кнопка": button_text,
                         })
 
+                # Слить правки обратно в results и автосохранить черновик на диск:
+                # значения полей переживут F5 / перезапуск сервера.
+                for _i, _er in enumerate(edited_results):
+                    if _i < len(results):
+                        results[_i].update(
+                            {k: v for k, v in _er.items() if not k.startswith("__")}
+                        )
+                _draft_ok = save_conditions_draft(results)
+
                 _approved_count = sum(1 for er in edited_results if er.get("__approved"))
                 if _approved_count:
                     st.info(f"Согласовано к сохранению: {_approved_count} из {len(edited_results)}")
                 else:
                     st.warning("Отметьте галочкой акции, которые хотите сохранить в Google Sheets")
+                if _draft_ok:
+                    st.caption("✔ Черновик автосохранён локально — правки не потеряются при обновлении страницы.")
 
                 # Save to Google Sheets button
-                if st.button("Сохранить согласованные условия", type="primary", key="save_conditions"):
+                if st.button("💾 Сохранить согласованные условия в Google Sheets", type="primary", key="save_conditions"):
                     try:
                         import gspread
                         from google.oauth2.service_account import Credentials
@@ -1460,6 +1004,7 @@ elif _nav_page == "Условия акций":
                             headers = ws.row_values(1)
 
                             saved = 0
+                            batch = []
                             for er in edited_results:
                                 if not er.get("__approved"):
                                     continue
@@ -1472,14 +1017,25 @@ elif _nav_page == "Условия акций":
                                               "Бонусы",
                                               "Механика",
                                               "Категория",
+                                              "Категории",
                                               "Срок сгорания бонусов",
                                               "Название информационного купона для МП",
                                               "Текст на информационном купоне / слип-чеке",
                                               "Кнопка"]:
                                     if field in headers:
                                         col_idx = headers.index(field) + 1
-                                        ws.update_cell(sheet_row, col_idx, er.get(field, ""))
+                                        cell_a1 = gspread.utils.rowcol_to_a1(sheet_row, col_idx)
+                                        batch.append({
+                                            "range": cell_a1,
+                                            "values": [[er.get(field, "")]],
+                                        })
                                 saved += 1
+
+                            # Один batch-запрос вместо update_cell в цикле:
+                            # иначе ~9 записей × N акций пробивают квоту Sheets
+                            # "Write requests per minute per user" (429).
+                            if batch:
+                                ws.batch_update(batch, value_input_option="USER_ENTERED")
 
                             load_cvm_data.clear()
                             st.success(f"Сохранено {saved} акций!")
@@ -1491,12 +1047,8 @@ elif _nav_page == "Условия акций":
 #  PAGE: ✨ Генерация PUSH
 # ═════════════════════════════════════════════════════════════════════════════
 
-elif _nav_page == "Генерация PUSH":
-    dx_page_header(
-        "AI генерация",
-        "Push-сообщения",
-        "Генерация заголовков и текстов push-уведомлений с учётом сегмента, периода и шаблонов. Поддерживает массовый и точечный режим.",
-    )
+elif _nav_page == "✨ Генерация PUSH":
+    pass  # page loaded
 
     sid = st.session_state.get("spreadsheet_id",
                                 "1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY")
@@ -1550,29 +1102,14 @@ elif _nav_page == "Генерация PUSH":
         }
 
         def _on_month_change():
-            for k in ["mass_results", "single_result", "single_selected",
-                      "tmpl_results", "tmpl_checked", "tmpl_targets"]:
+            for k in ["mass_results", "single_result", "single_selected"]:
                 if k in st.session_state:
                     del st.session_state[k]
-
-        # Дефолт месяца — последний месяц СПИСКА, в котором есть акции (по полю «Месяц»)
-        _gen_months_with_data = set()
-        if "Месяц" in df_push_promos.columns:
-            for _m in df_push_promos["Месяц"].dropna():
-                _ms = str(_m).strip()
-                if _ms.isdigit():
-                    _gen_months_with_data.add(int(_ms))
-        _gen_default_idx = 0
-        for _i in range(len(month_options_gen) - 1, -1, -1):
-            _mn = _MONTH_MAP_GEN.get(month_options_gen[_i].split()[0])
-            if _mn and _mn in _gen_months_with_data:
-                _gen_default_idx = _i
-                break
 
         selected_gen_month = st.selectbox(
             "Месяц",
             month_options_gen,
-            index=_gen_default_idx,
+            index=0,
             key="gen_month",
             on_change=_on_month_change,
         )
@@ -1616,18 +1153,12 @@ elif _nav_page == "Генерация PUSH":
                 _caption += f" (с push: {_has_push})"
             st.caption(_caption)
 
-            # Вкладки массовая / по одной / по шаблону
-            gen_tab = st.radio(
-                "",
-                ["По одной акции", "Массовая генерация", "По шаблону"],
-                index=1,
-                key="gen_tab_radio",
-                label_visibility="collapsed",
-            )
+            # Вкладки массовая / по одной
+            gen_tab = st.radio("", ["🎯 По одной акции", "⚡ Массовая генерация"], index=1, key="gen_tab_radio", label_visibility="collapsed")
 
             # ── МАССОВАЯ ─────────────────────────────────────────────
-            if gen_tab == "Массовая генерация":
-                if st.button("Сгенерировать все", type="primary", key="gen_mass_btn"):
+            if gen_tab == "⚡ Массовая генерация":
+                if st.button("🚀 Сгенерировать все", type="primary", key="gen_mass_btn"):
                     from ai_generator import (
                         generate_push_texts, calculate_push_schedule,
                         _needs_activation, find_best_deeplink,
@@ -1775,12 +1306,12 @@ elif _nav_page == "Генерация PUSH":
                                 )
                                 tlen = len(edited_title)
                                 blen = len(edited_body)
-                                t_ok = "ok" if tlen <= 35 else "над лимитом"
-                                b_ok = "ok" if blen <= 120 else "над лимитом"
+                                t_ok = "🟢" if tlen <= 35 else "🔴"
+                                b_ok = "🟢" if blen <= 120 else "🔴"
                                 st.caption(f"Заголовок: {t_ok} {tlen}/35 | Текст: {b_ok} {blen}/120")
 
                     # Save button
-                    if st.button("Сохранить выбранные", type="primary", key="save_mass"):
+                    if st.button("💾 Сохранить выбранные", type="primary", key="save_mass"):
                         rows_to_save = []
                         for i, item in enumerate(results):
                             if not st.session_state.mass_checked.get(i, False):
@@ -1842,7 +1373,7 @@ elif _nav_page == "Генерация PUSH":
                             st.warning("Нет выбранных акций для сохранения")
 
             # ── ПО ОДНОЙ ─────────────────────────────────────────────
-            elif gen_tab == "По одной акции":
+            else:
                 # Selectbox with promos
                 promo_options = {}
                 for _, row in df_gen.iterrows():
@@ -1877,7 +1408,7 @@ elif _nav_page == "Генерация PUSH":
                         st.info(f"У этой акции уже есть {_sel_existing} push-сообщений. Новые будут нумероваться с #{_sel_existing + 1}")
 
                     # Promo details
-                    with st.expander("Детали акции", expanded=False):
+                    with st.expander("📋 Детали акции", expanded=False):
                         info_cols = st.columns(3)
                         with info_cols[0]:
                             st.markdown(f"**Номер:** {_norm_num(selected_promo.get('НОМЕР'))}")
@@ -1892,7 +1423,7 @@ elif _nav_page == "Генерация PUSH":
                             st.markdown(f"**Механика:** {selected_promo.get('Механика', '')}")
 
                     # Search on dixy.ru button
-                    if st.button("Найти акции на dixy.ru", key="search_dixy"):
+                    if st.button("🔍 Найти акции на dixy.ru", key="search_dixy"):
                         try:
                             from dixy_parser import search_discounts
                             promo_name = str(selected_promo.get("Название промо", ""))
@@ -1934,13 +1465,13 @@ elif _nav_page == "Генерация PUSH":
                             "discount": st.column_config.TextColumn("Тип", width="small"),
                             "by_card": st.column_config.TextColumn("Карта", width="small"),
                             "date_to": st.column_config.TextColumn("Срок", width="small"),
-                            "url": st.column_config.LinkColumn("Ссылка", width="small", display_text="открыть"),
+                            "url": st.column_config.LinkColumn("🔗", width="small", display_text="↗"),
                         }
 
                         # Чекбокс прямо в таблице — тап на строку добавляет в промпт
-                        dixy_df["Выбор"] = False
-                        edit_cols = ["Выбор"] + display_cols
-                        col_config["Выбор"] = st.column_config.CheckboxColumn("Выбор", width="small", default=False)
+                        dixy_df["📌"] = False
+                        edit_cols = ["📌"] + display_cols
+                        col_config["📌"] = st.column_config.CheckboxColumn("📌", width="small", default=False)
 
                         _edited = st.data_editor(
                             dixy_df[edit_cols],
@@ -1952,7 +1483,7 @@ elif _nav_page == "Генерация PUSH":
                         )
 
                         # Собираем выбранные
-                        _sel_mask = _edited["Выбор"] == True
+                        _sel_mask = _edited["📌"] == True
                         if _sel_mask.any():
                             _sel_items = []
                             for _, _r in _edited[_sel_mask].iterrows():
@@ -1965,23 +1496,22 @@ elif _nav_page == "Генерация PUSH":
                                     _lbl += f" {_bc}"
                                 _sel_items.append(_lbl)
                             st.session_state["dixy_selected_products"] = _sel_items
-                            st.caption(f"Выбрано для промпта: {len(_sel_items)}")
+                            st.caption(f"📌 Выбрано для промпта: {len(_sel_items)}")
                         else:
                             st.session_state["dixy_selected_products"] = []
 
-                    # Extra rules for AI providers (сохраняются между переключениями акций)
+                    # Extra rules for AI providers
                     extra_rules = ""
                     if ai_provider != "builtin":
-                        if "single_extra_rules" not in st.session_state:
-                            st.session_state["single_extra_rules"] = ""
                         extra_rules = st.text_area(
                             "Дополнительные правила для AI",
+                            value="",
                             key="single_extra_rules",
                             height=80,
                         )
 
                     # Generate button
-                    if st.button("Сгенерировать push", type="primary", key="gen_single_btn"):
+                    if st.button("🚀 Сгенерировать push", type="primary", key="gen_single_btn"):
                         from ai_generator import (
                             generate_push_texts, calculate_push_schedule,
                             _needs_activation, find_best_deeplink,
@@ -2109,13 +1639,13 @@ elif _nav_page == "Генерация PUSH":
                                     )
                                     tlen = len(edited_title)
                                     blen = len(edited_body)
-                                    t_ok = "ok" if tlen <= 35 else "над лимитом"
-                                    b_ok = "ok" if blen <= 120 else "над лимитом"
+                                    t_ok = "🟢" if tlen <= 35 else "🔴"
+                                    b_ok = "🟢" if blen <= 120 else "🔴"
                                     st.caption(f"Заголовок: {t_ok} {tlen}/35 | Текст: {b_ok} {blen}/120")
 
                         # Save approved variants
                         st.markdown("---")
-                        if st.button("Сохранить выбранные варианты", type="primary", key="save_single"):
+                        if st.button("💾 Сохранить выбранные варианты", type="primary", key="save_single"):
                             rows_to_save = []
                             for p_idx, push_data in enumerate(pushes):
                                 push_num = push_data.get("push_number", p_idx + 1)
@@ -2174,401 +1704,243 @@ elif _nav_page == "Генерация PUSH":
                             else:
                                 st.warning("Выберите хотя бы один вариант")
 
-            # ── ПО ШАБЛОНУ ───────────────────────────────────────────
-            elif gen_tab == "По шаблону":
-                st.caption("Берём акцию-шаблон с уже согласованными push, и для целевых акций "
-                           "генерируем тексты по аналогии — заменяя только условия (суммы, проценты, чек, даты, товары).")
 
-                # Все акции с ≥1 push-сообщением (потенциальные шаблоны)
-                df_with_msgs = df_push_promos[df_push_promos.get("_existing_msgs", 0) > 0].copy() \
-                    if "_existing_msgs" in df_push_promos.columns else pd.DataFrame()
+# ═════════════════════════════════════════════════════════════════════════════
+#  PAGE: 🎬 Контентные акции
+# ═════════════════════════════════════════════════════════════════════════════
 
-                if df_with_msgs.empty:
-                    st.info("Нет акций с уже согласованными push-сообщениями. "
-                            "Сначала согласуйте хотя бы одну акцию-шаблон.")
-                else:
-                    # ── Фильтр по месяцу для шаблона ──
-                    tmpl_month_options = ["Все месяцы"] + month_options_gen
-                    # Дефолт — последний месяц, в котором есть шаблоны (с push)
-                    _tmpl_months_with_data = set()
-                    if "Месяц" in df_with_msgs.columns:
-                        for _m in df_with_msgs["Месяц"].dropna():
-                            _ms = str(_m).strip()
-                            if _ms.isdigit():
-                                _tmpl_months_with_data.add(int(_ms))
-                    _tmpl_default_idx = 0
-                    for _i in range(len(tmpl_month_options) - 1, 0, -1):
-                        _mn = _MONTH_MAP_GEN.get(tmpl_month_options[_i].split()[0])
-                        if _mn and _mn in _tmpl_months_with_data:
-                            _tmpl_default_idx = _i
-                            break
+elif _nav_page == "🎬 Контентные акции":
+    sid = st.session_state.get("spreadsheet_id",
+                                "1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY")
 
-                    tmpl_month = st.selectbox(
-                        "Месяц шаблона",
-                        tmpl_month_options,
-                        index=_tmpl_default_idx,
-                        key="tmpl_month",
+    from ai_generator import (
+        is_content_promo, calculate_push_schedule, generate_content_promo,
+        _build_content_prompt, CONTENT_DEFAULT_CTA,
+    )
+
+    st.caption("Контентные акции — коммуникация / тематическая рассылка без денежной выгоды. "
+               "Для каждой формируем еженедельный контент, информационный купон и промпт для картинки.")
+
+    df_cvm = load_cvm_data(sid)
+
+    if df_cvm.empty:
+        st.warning("Нет данных. Проверьте доступ к таблице.")
+    else:
+        # Оставляем только контентные акции
+        _content_rows = [r.to_dict() for _, r in df_cvm.iterrows()
+                         if is_content_promo(r.to_dict())]
+        df_content = pd.DataFrame(_content_rows) if _content_rows else pd.DataFrame()
+
+        if df_content.empty:
+            st.info("Контентных акций не найдено.")
+        else:
+            # ── Фильтр по месяцу (дефолт — последний) ──
+            _MONTH_NAMES_CT = {
+                1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+                5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+                9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+            }
+            df_content_month = df_content
+            if "Год" in df_content.columns and "Месяц" in df_content.columns:
+                _ct_pairs = []
+                for _, _r in df_content[["Год", "Месяц"]].drop_duplicates().iterrows():
+                    _y, _m = str(_r["Год"]).strip(), str(_r["Месяц"]).strip()
+                    if _y.isdigit() and _m.isdigit():
+                        _ct_pairs.append((int(_y), int(_m)))
+                _ct_pairs = sorted(set(_ct_pairs))
+                if _ct_pairs:
+                    _ct_labels = [f"{_MONTH_NAMES_CT.get(m, m)} {y}" for y, m in _ct_pairs]
+                    _ct_sel = st.selectbox(
+                        "Месяц", _ct_labels, index=len(_ct_labels) - 1, key="content_month",
                     )
+                    _ci = _ct_labels.index(_ct_sel)
+                    _cy, _cm = _ct_pairs[_ci]
+                    df_content_month = df_content[
+                        (df_content["Год"].astype(str).str.strip() == str(_cy)) &
+                        (df_content["Месяц"].astype(str).str.strip() == str(_cm))
+                    ].copy()
 
-                    # Применяем фильтр по месяцу к шаблонам (по пересечению дат акции)
-                    if tmpl_month != "Все месяцы":
-                        _tm_parts = tmpl_month.split()
-                        _tm_num = _MONTH_MAP_GEN.get(_tm_parts[0], 4)
-                        _tm_year = int(_tm_parts[1]) if len(_tm_parts) > 1 else 2026
-                        _tm_start = _date_cls(_tm_year, _tm_num, 1)
-                        if _tm_num == 12:
-                            _tm_end = _date_cls(_tm_year + 1, 1, 1) - timedelta(days=1)
-                        else:
-                            _tm_end = _date_cls(_tm_year, _tm_num + 1, 1) - timedelta(days=1)
+            st.caption(f"Контентных акций за месяц: {len(df_content_month)}")
 
-                        _tmpl_filtered = []
-                        for _, _r in df_with_msgs.iterrows():
-                            _yh = _r.get("Год", _tm_year)
-                            try:
-                                _yh = int(_yh)
-                            except (ValueError, TypeError):
-                                _yh = _tm_year
-                            _sd = _parse_promo_date(_r.get("Старт акции"), _yh)
-                            _ed = _parse_promo_date(_r.get("Окончание акции"), _yh)
-                            if _sd and _ed:
-                                if _ed < _sd:
-                                    _sd, _ed = _ed, _sd
-                                if _sd <= _tm_end and _ed >= _tm_start \
-                                        and str(_r.get("Месяц", "")).strip() == str(_tm_num):
-                                    _tmpl_filtered.append(_r)
-                        df_with_msgs = pd.DataFrame(_tmpl_filtered) if _tmpl_filtered else pd.DataFrame()
+            if df_content_month.empty:
+                st.info("Нет контентных акций в выбранном месяце.")
+            else:
+                # ── Выбор акции ──
+                _content_options = {}
+                for _, row in df_content_month.iterrows():
+                    _k = f"{_norm_num(row.get('НОМЕР'))} — {row.get('Название промо', '')}"
+                    _content_options[_k] = row.to_dict()
 
-                    if df_with_msgs.empty:
-                        st.info("Нет шаблонов в выбранном месяце.")
-                        st.stop()
+                _sel_key = st.selectbox(
+                    "Выберите контентную акцию",
+                    list(_content_options.keys()),
+                    key="content_select",
+                )
+                _sel_promo = _content_options[_sel_key]
+                _cur_num = _norm_num(_sel_promo.get("НОМЕР"))
+                _sched = calculate_push_schedule(_sel_promo)
 
-                    # ── Шаблон ──
-                    tmpl_options = {}
-                    for _, row in df_with_msgs.iterrows():
-                        n = _norm_num(row.get("НОМЕР"))
-                        nm = row.get("Название промо", "?")
-                        ec = int(row.get("_existing_msgs", 0))
-                        tmpl_options[f"{n} — {nm} ({ec} msg)"] = row.to_dict()
+                with st.expander("📋 Детали и график выпусков", expanded=False):
+                    st.markdown(f"**Сегмент:** {_sel_promo.get('Сегмент', '')}")
+                    st.markdown(f"**Период:** {_sel_promo.get('Старт акции', '')} – "
+                                f"{_sel_promo.get('Окончание акции', '')}")
+                    st.markdown(f"**Выпусков (по неделям):** {len(_sched)}")
+                    st.markdown("  •  ".join(s["date"] for s in _sched))
 
-                    tmpl_key = st.selectbox(
-                        "Акция-шаблон (с согласованными push)",
-                        list(tmpl_options.keys()),
-                        key="tmpl_select",
-                    )
-                    tmpl_promo = tmpl_options[tmpl_key]
-                    tmpl_num = _norm_num(tmpl_promo.get("НОМЕР"))
+                # ── CTA / механика акции, вшиваемая в текст ──
+                _cta = st.text_input(
+                    "Механика акции (CTA в тексте)",
+                    value=CONTENT_DEFAULT_CTA,
+                    key=f"content_cta_{_cur_num}",
+                    help="Вшивается в каждый выпуск ненавязчиво. Очистите поле, чтобы не упоминать выгоду.",
+                )
 
-                    # Загружаем шаблонные сообщения из PUSH sheet
-                    tmpl_messages = []
-                    if not df_push.empty and "Номер промо" in df_push.columns:
-                        _df_push_copy = df_push.copy()
-                        _df_push_copy["_num_str"] = _df_push_copy["Номер промо"].apply(_norm_num)
-                        _rows = _df_push_copy[_df_push_copy["_num_str"] == tmpl_num]
-                        for _, r in _rows.iterrows():
-                            tmpl_messages.append({
-                                "push_number": str(r.get("Номер msg", "")),
-                                "title": str(r.get("PUSH заголовок", "")),
-                                "body": str(r.get("текст PUSH", "")),
-                                "date": str(r.get("Дата", "")),
-                                "time": str(r.get("Время", "")),
-                            })
+                # ── Вводные от пользователя для формирования промта ──
+                _brief = st.text_area(
+                    "Вводные для генерации (необязательно)",
+                    value="",
+                    key=f"content_brief_{_cur_num}",
+                    height=120,
+                    placeholder="Например: главный герой — кот-учёный; в каждом эпизоде один лайфхак; "
+                                "тон ироничный; в 1 выпуске — про режим дня малыша…",
+                    help="Эти вводные встраиваются в промт с самым высоким приоритетом.",
+                )
 
-                    # Превью шаблонных сообщений
-                    with st.expander(f"Шаблонные push ({len(tmpl_messages)})", expanded=True):
-                        if not tmpl_messages:
-                            st.warning("Не удалось загрузить шаблонные сообщения")
-                        for m in tmpl_messages:
-                            st.markdown(f"**Push #{m['push_number']}** ({m['date']} {m['time']})")
-                            st.markdown(f"- **Заголовок:** {m['title']}")
-                            st.markdown(f"- **Текст:** {m['body']}")
+                # ── Превью промта (для согласования) ──
+                with st.expander("🧾 Промт для модели (превью)", expanded=False):
+                    st.code(_build_content_prompt(_sel_promo, _sched, _brief, _cta), language=None)
 
-                    # ── Целевые акции ──
-                    # Берём из df_gen (текущий месяц), исключая саму шаблонную.
-                    # Сортировка: сначала акции БЕЗ push (приоритет), потом — с push (с пометкой).
-                    _no_push_options = {}
-                    _with_push_options = {}
-                    for _, row in df_gen.iterrows():
-                        n = _norm_num(row.get("НОМЕР"))
-                        if n == tmpl_num:
-                            continue
-                        ec = int(row.get("_existing_msgs", 0)) if "_existing_msgs" in row else 0
-                        nm = row.get("Название промо", "?")
-                        if ec > 0:
-                            _with_push_options[f"{n} — {nm} (уже {ec} msg)"] = row.to_dict()
-                        else:
-                            _no_push_options[f"{n} — {nm}"] = row.to_dict()
+                if st.button("🎬 Сгенерировать контент", type="primary", key="gen_content_one"):
+                    try:
+                        with st.spinner("Генерирую контент, купоны и промпты картинок..."):
+                            _res = generate_content_promo(_sel_promo, _sched, _brief, _cta)
+                            _res["__promo_num"] = _cur_num
+                            _res["__promo_name"] = str(_sel_promo.get("Название промо", ""))
+                            _res["__segment"] = str(_sel_promo.get("Сегмент", ""))
+                            _res["__year"] = str(_sel_promo.get("Год", ""))
+                            _res["__month"] = str(_sel_promo.get("Месяц", ""))
+                        _existing = st.session_state.get("content_results", [])
+                        _existing = [r for r in _existing if r.get("__promo_num") != _cur_num]
+                        _existing.append(_res)
+                        st.session_state.content_results = _existing
+                        st.success(f"Готово: {len(_res.get('weeks', []))} выпусков для {_cur_num}")
+                    except Exception as e:
+                        st.error(f"Ошибка генерации: {e}")
 
-                    target_options = {**_no_push_options, **_with_push_options}
+                # ── Показ результатов для выбранной акции ──
+                _cur = next((r for r in st.session_state.get("content_results", [])
+                             if r.get("__promo_num") == _cur_num), None)
+                if _cur:
+                    st.markdown("### Результаты")
+                    if _cur.get("theme"):
+                        st.caption(f"Тема: {_cur['theme']}")
 
-                    _cnt_caption_parts = []
-                    if _no_push_options:
-                        _cnt_caption_parts.append(f"без push: {len(_no_push_options)}")
-                    if _with_push_options:
-                        _cnt_caption_parts.append(f"с push (внизу списка): {len(_with_push_options)}")
-                    if _cnt_caption_parts:
-                        st.caption("Доступно — " + ", ".join(_cnt_caption_parts))
+                    weeks = _cur.get("weeks", [])
+                    for wi, wk in enumerate(weeks):
+                        with st.container(border=True):
+                            st.markdown(f"**Выпуск {wk.get('week', wi + 1)} · "
+                                        f"{wk.get('date', '')}** — {wk.get('title', '')}")
 
-                    if not target_options:
-                        st.info("Нет целевых акций для генерации в выбранном месяце")
-                    else:
-                        selected_targets = st.multiselect(
-                            "Целевые акции (для них сгенерируем по аналогии)",
-                            list(target_options.keys()),
-                            key="tmpl_targets",
-                        )
-
-                        # Доп. правила
-                        tmpl_extra_rules = st.text_area(
-                            "Дополнительные правила (опционально)",
-                            key="tmpl_extra_rules",
-                            height=68,
-                        )
-
-                        if st.button("Сгенерировать по шаблону",
-                                     type="primary", key="tmpl_gen_btn",
-                                     disabled=(not selected_targets or not tmpl_messages)):
-                            from ai_generator import (
-                                generate_push_from_template, calculate_push_schedule,
-                                _needs_activation, find_best_deeplink,
+                            _pt = st.text_input(
+                                "Заголовок пуша",
+                                value=wk.get("push_title", ""),
+                                key=f"ct_pt_{_cur_num}_{wi}",
                             )
+                            _pb = st.text_area(
+                                "Текст пуша",
+                                value=wk.get("push_body", ""),
+                                key=f"ct_pb_{_cur_num}_{wi}",
+                                height=68,
+                            )
+                            _tlen, _blen = len(_pt), len(_pb)
+                            _tok = "🟢" if _tlen <= 35 else "🔴"
+                            _bok = "🟢" if _blen <= 120 else "🔴"
+                            st.caption(f"Заголовок: {_tok} {_tlen}/35 | Текст: {_bok} {_blen}/120")
 
-                            base_rules = st.session_state.get("generation_rules", "")
-                            full_rules = base_rules
-                            if tmpl_extra_rules:
-                                full_rules = (full_rules + "\n\n" + tmpl_extra_rules).strip()
+                            _cont = st.text_area(
+                                "Описание серии (карточка в приложении)",
+                                value=wk.get("content", ""),
+                                key=f"ct_content_{_cur_num}_{wi}",
+                                height=140,
+                            )
+                            _clen = len(_cont)
+                            _cok = "🟢" if _clen <= 500 else "🔴"
+                            st.caption(f"Описание: {_cok} {_clen}/500")
+                            _cn, _cb = st.columns([1, 1])
+                            with _cn:
+                                st.text_input(
+                                    "Название информационного купона",
+                                    value=wk.get("coupon_name", ""),
+                                    key=f"ct_cname_{_cur_num}_{wi}",
+                                )
+                            with _cb:
+                                st.text_input(
+                                    "Кнопка → каталог",
+                                    value=wk.get("button", ""),
+                                    key=f"ct_btn_{_cur_num}_{wi}",
+                                )
+                            st.text_area(
+                                "Текст купона / карточки",
+                                value=wk.get("coupon_text", ""),
+                                key=f"ct_ctext_{_cur_num}_{wi}",
+                                height=80,
+                            )
+                            st.markdown("**🖼 Промпт для генерации картинки** (кнопка копирования справа):")
+                            st.code(wk.get("image_prompt", ""), language=None)
 
-                            tmpl_provider = ai_provider
-
-                            results = []
-                            progress = st.progress(0)
-                            total = len(selected_targets)
-                            for idx, tk in enumerate(selected_targets):
-                                tgt_promo = target_options[tk]
-                                tgt_num = _norm_num(tgt_promo.get("НОМЕР"))
-                                tgt_existing = _existing_push_count.get(tgt_num, 0)
-                                schedule = calculate_push_schedule(tgt_promo)
-                                try:
-                                    result = generate_push_from_template(
-                                        target_promo=tgt_promo,
-                                        template_promo=tmpl_promo,
-                                        template_messages=tmpl_messages,
-                                        schedule=schedule,
-                                        title_max_len=35,
-                                        body_max_len=120,
-                                        rules=full_rules,
-                                        provider=tmpl_provider,
-                                        anthropic_key=ai_key if tmpl_provider == "anthropic" else None,
-                                        openai_key=ai_key if tmpl_provider == "openai" else None,
-                                    )
-                                    if tgt_existing > 0 and "pushes" in result:
-                                        for _p in result["pushes"]:
-                                            _p["push_number"] = _p.get("push_number", 1) + tgt_existing
-
-                                    if _needs_activation(tgt_promo):
-                                        auto_dl = "купон"
-                                    else:
-                                        cat = str(tgt_promo.get("Название промо", ""))
-                                        dl = find_best_deeplink(cat)
-                                        auto_dl = dl["deeplink"] if dl else ""
-
-                                    results.append({
-                                        "promo": tgt_promo,
-                                        "result": result,
-                                        "schedule": schedule,
-                                        "auto_deeplink": auto_dl,
-                                    })
-                                except Exception as e:
-                                    st.warning(f"Ошибка для {tgt_num}: {e}")
-                                progress.progress((idx + 1) / total)
-
-                            # Очищаем старые значения виджетов (date_input/text_input
-                            # с key запоминают значение в session_state и игнорируют value=
-                            # при повторном рендере, из-за чего «прилипают» старые даты).
-                            for _k in list(st.session_state.keys()):
-                                if _k.startswith(("tmpl_date_", "tmpl_time_",
-                                                  "tmpl_title_", "tmpl_body_",
-                                                  "tmpl_dl_", "tmpl_check_")):
-                                    del st.session_state[_k]
-
-                            st.session_state.tmpl_results = results
-                            st.success(f"Сгенерировано: {len(results)} акций")
-
-                        # Display template results
-                        if "tmpl_results" in st.session_state and st.session_state.tmpl_results:
-                            results = st.session_state.tmpl_results
-
-                            if "tmpl_checked" not in st.session_state \
-                                    or len(st.session_state.tmpl_checked) != len(results):
-                                st.session_state.tmpl_checked = {i: True for i in range(len(results))}
-
-                            for i, item in enumerate(results):
-                                promo = item["promo"]
-                                result = item["result"]
-                                auto_dl = item["auto_deeplink"]
-                                tgt_schedule = item.get("schedule", [])
-                                promo_num = _norm_num(promo.get("НОМЕР"))
-                                promo_name = str(promo.get("Название промо", ""))
-                                _ec = _existing_push_count.get(promo_num, 0)
-                                _existing_badge = f" (уже {_ec} msg)" if _ec > 0 else ""
-
-                                _check_col, _exp_col = st.columns([0.05, 0.95])
-                                with _check_col:
-                                    checked = st.checkbox(
-                                        "",
-                                        value=st.session_state.tmpl_checked.get(i, True),
-                                        key=f"tmpl_check_{i}",
-                                        label_visibility="collapsed",
-                                    )
-                                    st.session_state.tmpl_checked[i] = checked
-                                with _exp_col:
-                                  with st.expander(f"**{promo_num} — {promo_name}{_existing_badge}**", expanded=True):
-                                    pushes = result.get("pushes", [])
-                                    for p_idx, push_data in enumerate(pushes):
-                                        push_num = push_data.get("push_number", p_idx + 1)
-                                        variants = push_data.get("variants", [])
-                                        if not variants:
-                                            continue
-                                        var = variants[0]
-                                        title = var.get("title", "")
-                                        body = var.get("body", "")
-
-                                        # Дата/время — ИЗ РАСПИСАНИЯ ЦЕЛЕВОЙ АКЦИИ,
-                                        # а не то, что вернул AI (он мог скопировать дату шаблона).
-                                        sched_idx = min(p_idx, len(tgt_schedule) - 1) if tgt_schedule else -1
-                                        if sched_idx >= 0:
-                                            _date_default = tgt_schedule[sched_idx].get("date_obj")
-                                            _time_default = tgt_schedule[sched_idx].get("time", "10:00")
-                                        else:
-                                            _date_default = None
-                                            _time_default = push_data.get("time", "10:00")
-                                        if not _date_default:
-                                            from datetime import date as _d_cls
-                                            _date_default = _d_cls.today()
-
-                                        st.caption(f"Push #{push_num}")
-                                        pcol1, pcol2, pcol3 = st.columns(3)
-                                        with pcol1:
-                                            push_date_obj = st.date_input(
-                                                "Дата",
-                                                value=_date_default,
-                                                key=f"tmpl_date_{i}_{p_idx}",
-                                                label_visibility="collapsed",
-                                                format="DD.MM.YYYY",
-                                            )
-                                        with pcol2:
-                                            st.text_input(
-                                                "Время",
-                                                value=_time_default,
-                                                key=f"tmpl_time_{i}_{p_idx}",
-                                                label_visibility="collapsed",
-                                            )
-                                        with pcol3:
-                                            st.text_input(
-                                                "Deeplink",
-                                                value=auto_dl,
-                                                key=f"tmpl_dl_{i}_{p_idx}",
-                                                label_visibility="collapsed",
-                                            )
-
-                                        edited_title = st.text_input(
-                                            "Заголовок",
-                                            value=title,
-                                            key=f"tmpl_title_{i}_{p_idx}",
-                                            label_visibility="collapsed",
-                                        )
-                                        edited_body = st.text_area(
-                                            "Текст",
-                                            value=body,
-                                            key=f"tmpl_body_{i}_{p_idx}",
-                                            height=68,
-                                            label_visibility="collapsed",
-                                        )
-                                        tlen = len(edited_title)
-                                        blen = len(edited_body)
-                                        t_ok = "ok" if tlen <= 35 else "над лимитом"
-                                        b_ok = "ok" if blen <= 120 else "над лимитом"
-                                        st.caption(f"Заголовок: {t_ok} {tlen}/35 | Текст: {b_ok} {blen}/120")
-
-                            if st.button("Сохранить выбранные", type="primary", key="save_tmpl"):
-                                rows_to_save = []
-                                for i, item in enumerate(results):
-                                    if not st.session_state.tmpl_checked.get(i, False):
-                                        continue
-                                    promo = item["promo"]
-                                    result = item["result"]
-                                    pushes = result.get("pushes", [])
-                                    for p_idx, push_data in enumerate(pushes):
-                                        push_num = push_data.get("push_number", p_idx + 1)
-                                        title_val = st.session_state.get(f"tmpl_title_{i}_{p_idx}", "")
-                                        body_val = st.session_state.get(f"tmpl_body_{i}_{p_idx}", "")
-                                        date_obj = st.session_state.get(f"tmpl_date_{i}_{p_idx}")
-                                        if hasattr(date_obj, "strftime"):
-                                            date_val = date_obj.strftime("%d.%m.%Y")
-                                        else:
-                                            date_val = str(date_obj) if date_obj else ""
-                                        time_val = st.session_state.get(f"tmpl_time_{i}_{p_idx}", "10:00")
-                                        dl_val = st.session_state.get(f"tmpl_dl_{i}_{p_idx}", "")
-
-                                        dow = ""
-                                        week_num = ""
-                                        parsed_d = _parse_promo_date(date_val)
-                                        if parsed_d:
-                                            _DOW_NAMES = {0: "пн", 1: "вт", 2: "ср", 3: "чт",
-                                                          4: "пт", 5: "сб", 6: "вс"}
-                                            dow = _DOW_NAMES.get(parsed_d.weekday(), "")
-                                            week_num = str(parsed_d.isocalendar()[1])
-
-                                        row = {
-                                            "Сегмент": str(promo.get("Сегмент", "")),
-                                            "Канал": "PUSH",
-                                            "Название промо": str(promo.get("Название промо", "")),
-                                            "Год": str(promo.get("Год", "")),
-                                            "Месяц": str(promo.get("Месяц", "")),
-                                            "Нед": week_num,
-                                            "День недели": dow,
-                                            "Дата": date_val,
-                                            "Время": time_val,
-                                            "Клиентов": str(promo.get("Примерное количество клиентов", "")),
-                                            "Доп настройки клиентов": "минус фрод",
-                                            "Номер промо": _norm_num(promo.get("НОМЕР")),
-                                            "Номер msg": str(push_num),
-                                            "PUSH заголовок": title_val,
-                                            "__title_len": len(title_val),
-                                            "текст PUSH": body_val,
-                                            "__body_len": len(body_val),
-                                            "Экран - ссылка": dl_val,
-                                            "Текст купона": "",
-                                            "Кнопка": "",
-                                        }
-                                        rows_to_save.append(row)
-
-                                if rows_to_save:
-                                    try:
-                                        if save_to_sheets(rows_to_save, sid):
-                                            st.success(f"Сохранено {len(rows_to_save)} push!")
-                                            load_push_data.clear()
-                                    except Exception as e:
-                                        import traceback as _tb
-                                        st.error(f"Ошибка сохранения: {e}")
-                                        with st.expander("Подробности ошибки", expanded=False):
-                                            st.code(_tb.format_exc())
-                                else:
-                                    st.warning("Нет выбранных акций для сохранения")
+                    # ── Сохранение выпусков в PUSH ──
+                    st.markdown("---")
+                    if st.button("💾 Сохранить выпуски в PUSH", type="primary", key="save_content"):
+                        _DOW = {0: "пн", 1: "вт", 2: "ср", 3: "чт", 4: "пт", 5: "сб", 6: "вс"}
+                        rows_to_save = []
+                        for wi, wk in enumerate(weeks):
+                            _date_val = wk.get("date", "")
+                            _pd = _parse_promo_date(_date_val)
+                            _dow = _DOW.get(_pd.weekday(), "") if _pd else ""
+                            _wn = str(_pd.isocalendar()[1]) if _pd else ""
+                            _title = st.session_state.get(f"ct_pt_{_cur_num}_{wi}", "")
+                            _body = st.session_state.get(f"ct_pb_{_cur_num}_{wi}", "")
+                            _ctext = st.session_state.get(f"ct_ctext_{_cur_num}_{wi}", "")
+                            _btn = st.session_state.get(f"ct_btn_{_cur_num}_{wi}", "")
+                            rows_to_save.append({
+                                "Сегмент": _cur.get("__segment", ""),
+                                "Канал": "PUSH",
+                                "Название промо": _cur.get("__promo_name", ""),
+                                "Год": _cur.get("__year", ""),
+                                "Месяц": _cur.get("__month", ""),
+                                "Нед": _wn,
+                                "День недели": _dow,
+                                "Дата": _date_val,
+                                "Время": "10:00",
+                                "Клиентов": str(_sel_promo.get("Примерное количество клиентов", "")),
+                                "Доп настройки клиентов": "минус фрод",
+                                "Номер промо": _cur_num,
+                                "Номер msg": str(wk.get("week", wi + 1)),
+                                "PUSH заголовок": _title,
+                                "__title_len": len(_title),
+                                "текст PUSH": _body,
+                                "__body_len": len(_body),
+                                "Экран - ссылка": "каталог",
+                                "Текст купона": _ctext,
+                                "Кнопка": _btn,
+                            })
+                        if rows_to_save:
+                            try:
+                                if save_to_sheets(rows_to_save, sid):
+                                    st.success(f"Сохранено {len(rows_to_save)} выпусков в PUSH!")
+                                    load_push_data.clear()
+                            except Exception as e:
+                                st.error(f"Ошибка сохранения: {e}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  PAGE: 📋 Типы акций
 # ═════════════════════════════════════════════════════════════════════════════
 
-elif _nav_page == "Типы акций":
-    dx_page_header(
-        "Каталог механик",
-        "Типы акций",
-        "Классификация акций по 6 осям: активация, тип выгоды, охват, чек, период, контекст. Шаблоны заголовков и тел push-сообщений.",
-    )
+elif _nav_page == "📋 Типы акций":
     from ai_generator import classify_promo, _PUSH_PAIRS, _CONTEXT_BODY_PHRASES
 
-    _types_tab1, _types_tab2, _types_tab3 = st.tabs(["Классификация акций", "Шаблоны", "Оси"])
+    _types_tab1, _types_tab2, _types_tab3 = st.tabs(["📊 Классификация акций", "✏️ Шаблоны", "📖 Оси"])
 
     # ── TAB 1: Классификация акций ──
     with _types_tab1:
@@ -2587,14 +1959,14 @@ elif _nav_page == "Типы акций":
                     _type_rows.append({
                         "№": num,
                         "Акция": name[:45],
-                        "Акт": "Да" if cl["activation"] == "yes" else "",
+                        "Акт": "✅" if cl["activation"] == "yes" else "",
                         "Выгода": cl["benefit"],
                         "Охват": cl["scope"],
                         "Чек": cl["check_amount"] if cl["check"] == "check_from" else "",
                         "Период": cl["period"],
                         "Значение": cl["value"],
                         "Контекст": ", ".join(cl["context"][:2]),
-                        "Онлайн": "Да" if cl["is_online"] else "",
+                        "🌐": "✅" if cl["is_online"] else "",
                     })
                 if _type_rows:
                     df_types = pd.DataFrame(_type_rows)
@@ -2616,20 +1988,20 @@ elif _nav_page == "Типы акций":
         st.caption("Готовые пары (заголовок + body) — подбираются по комбинации осей")
 
         _benefit_names = {
-            "cashback_pct": "Кешбэк %", "cashback_rub": "Кешбэк ₽",
-            "discount_pct": "Скидка %", "discount_rub": "Скидка ₽",
-            "gift": "Предначисление", "communication": "Коммуникация",
-            "present": "Подарок",
+            "cashback_pct": "💰 Кешбэк %", "cashback_rub": "💎 Кешбэк ₽",
+            "discount_pct": "🏷 Скидка %", "discount_rub": "🎫 Скидка ₽",
+            "gift": "🎁 Предначисление", "communication": "📢 Коммуникация",
+            "present": "🎄 Подарок",
         }
         for benefit_code, benefit_label in _benefit_names.items():
             with st.expander(benefit_label, expanded=False):
                 _found_any = False
                 for key, pairs in _PUSH_PAIRS.items():
                     if key[1] == benefit_code or key[1] == "*":
-                        _act_label = "активация" if key[0] == "yes" else ""
-                        _scope_label = f"{key[2]}" if key[2] != "*" else ""
-                        _check_label = f"{key[3]}" if key[3] != "*" else ""
-                        _per_label = f"{key[4]}" if key[4] != "*" else ""
+                        _act_label = "🔑 активация" if key[0] == "yes" else ""
+                        _scope_label = f"📦 {key[2]}" if key[2] != "*" else ""
+                        _check_label = f"💳 {key[3]}" if key[3] != "*" else ""
+                        _per_label = f"📅 {key[4]}" if key[4] != "*" else ""
                         _tags = " ".join(filter(None, [_act_label, _scope_label, _check_label, _per_label]))
                         if _tags:
                             st.markdown(f"**{_tags}**")
@@ -2641,14 +2013,14 @@ elif _nav_page == "Типы акций":
                 if not _found_any:
                     st.caption("Нет шаблонов")
 
-        with st.expander("Напоминания (reminder)", expanded=False):
+        with st.expander("⏰ Напоминания (reminder)", expanded=False):
             for key, pairs in _PUSH_PAIRS.items():
                 if key[4] == "reminder":
                     for i, (title, body) in enumerate(pairs, 1):
                         st.markdown(f"{i}. **`{title}`**")
                         st.markdown(f"   `{body}`")
 
-        with st.expander("Контекстные фразы (праздники/сезон)", expanded=False):
+        with st.expander("🗓 Контекстные фразы (праздники/сезон)", expanded=False):
             for tag, phrases in _CONTEXT_BODY_PHRASES.items():
                 st.markdown(f"**{tag}:** {' | '.join(phrases[:2])}")
 
@@ -2720,12 +2092,9 @@ elif _nav_page == "Типы акций":
 #  PAGE: 📝 Правила генерации
 # ═════════════════════════════════════════════════════════════════════════════
 
-elif _nav_page == "Правила генерации":
-    dx_page_header(
-        "Настройки AI",
-        "Правила генерации",
-        "Системные инструкции для модели — тон, лимиты, призывы к действию, обращения по сегментам.",
-    )
+elif _nav_page == "📝 Правила генерации":
+    pass  # page loaded
+    st.markdown("Эти правила используются AI при генерации текстов push-уведомлений.")
 
     default_rules = """1. Тон: дружелюбный, энергичный, разговорный (как в мессенджере с другом)
 2. Используй эмодзи в заголовке (1-2 шт.), в тексте — умеренно
@@ -2755,11 +2124,11 @@ elif _nav_page == "Правила генерации":
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Сбросить к значениям по умолчанию", key="reset_rules"):
+        if st.button("🔄 Сбросить к значениям по умолчанию", key="reset_rules"):
             st.session_state.generation_rules = default_rules
             st.rerun()
     with col2:
-        if st.button("Сохранить правила", key="save_rules"):
+        if st.button("💾 Сохранить правила", key="save_rules"):
             st.success("Правила сохранены!")
 
 
@@ -2767,12 +2136,8 @@ elif _nav_page == "Правила генерации":
 #  PAGE: 🔗 Deeplinks
 # ═════════════════════════════════════════════════════════════════════════════
 
-elif _nav_page == "Deeplinks":
-    dx_page_header(
-        "Каталог ссылок",
-        "Deeplinks",
-        "Поиск deeplink-ссылок мобильного приложения по категории. Используется при генерации PUSH для автоподстановки ссылки.",
-    )
+elif _nav_page == "🔗 Deeplinks":
+    pass  # page loaded
 
     try:
         from ai_generator import search_deeplinks, _load_deeplinks
@@ -2783,7 +2148,7 @@ elif _nav_page == "Deeplinks":
         if df_dl is not None and not df_dl.empty:
             # Search
             search_query = st.text_input(
-                "Поиск по категории",
+                "🔍 Поиск по категории",
                 value="",
                 key="dl_search",
                 placeholder="Введите название категории...",
@@ -2819,267 +2184,3 @@ elif _nav_page == "Deeplinks":
         st.error("Модуль ai_generator не найден")
     except Exception as e:
         st.error(f"Ошибка загрузки deeplinks: {e}")
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-#  PAGE: 📊 Прогноз
-# ═════════════════════════════════════════════════════════════════════════════
-
-elif _nav_page == "Прогноз":
-    import forecast as _fc
-
-    dx_page_header(
-        "Финансовый прогноз",
-        "Прогноз по акциям месяца",
-        "Расчёт PL по формуле CVM offline: PL = Доп ТО × 0.30 − Скидка. Прогноз по каждой акции и сводный итог.",
-    )
-    st.caption(
-        "Расчёт по формуле CVM offline: **PL = Доп ТО × 0.30 − Скидка**. "
-        "Если в строке акции уже есть отклик и Доп ТО — берётся как план; "
-        "иначе считаем по медиане исторических аналогов (сегмент + механика + категория)."
-    )
-
-    sid = st.session_state.get(
-        "spreadsheet_id", "1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY"
-    )
-    df_cvm = load_cvm_data(sid)
-
-    if df_cvm.empty:
-        st.warning("Нет данных. Проверьте доступ к таблице.")
-    else:
-        _MONTH_NAMES_F = {
-            1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
-            5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
-            9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
-        }
-        _MONTH_MAP_F = {v: k for k, v in _MONTH_NAMES_F.items()}
-
-        ymf = []
-        if "Год" in df_cvm.columns and "Месяц" in df_cvm.columns:
-            for _, _r in df_cvm[["Год", "Месяц"]].drop_duplicates().iterrows():
-                y, m = str(_r["Год"]).strip(), str(_r["Месяц"]).strip()
-                if y.isdigit() and m.isdigit() and int(y) > 2000:
-                    ymf.append((int(y), int(m)))
-            ymf = sorted(set(ymf))
-        if not ymf:
-            ymf = [(2026, 5)]
-        month_opts = [f"{_MONTH_NAMES_F.get(m, str(m))} {y}" for y, m in ymf]
-
-        fc_col1, fc_col2 = st.columns([1, 1])
-        with fc_col1:
-            sel_str = st.selectbox(
-                "Месяц", month_opts,
-                index=len(month_opts) - 1,
-                key="forecast_month",
-            )
-        with fc_col2:
-            channels = ["Все"]
-            if "Каналы коммуникации" in df_cvm.columns:
-                channels += sorted(
-                    df_cvm["Каналы коммуникации"].dropna().astype(str).unique().tolist()
-                )
-            sel_ch = st.selectbox("Канал", channels, index=0, key="forecast_channel")
-
-        parts = sel_str.split()
-        sel_m = _MONTH_MAP_F.get(parts[0], 5)
-        sel_y = int(parts[1]) if len(parts) > 1 else 2026
-        m_start = _date_cls(sel_y, sel_m, 1)
-        m_end = (_date_cls(sel_y + 1, 1, 1) - timedelta(days=1)
-                 if sel_m == 12
-                 else _date_cls(sel_y, sel_m + 1, 1) - timedelta(days=1))
-
-        # Promos in selected month
-        month_rows, history_rows = [], []
-        for _, row in df_cvm.iterrows():
-            yh = row.get("Год", sel_y)
-            try:
-                yh = int(yh)
-            except (ValueError, TypeError):
-                yh = sel_y
-            sd = _parse_promo_date(row.get("Старт акции"), yh)
-            ed = _parse_promo_date(row.get("Окончание акции"), yh)
-            if not sd or not ed:
-                continue
-            if ed < sd:
-                sd, ed = ed, sd
-            # history = всё, что началось ДО выбранного месяца
-            if ed < m_start:
-                history_rows.append(row)
-                continue
-            # промо месяца — пересечение с месяцем
-            if sd <= m_end and ed >= m_start:
-                if sel_ch != "Все":
-                    if str(row.get("Каналы коммуникации", "")).strip() != sel_ch:
-                        continue
-                month_rows.append(row)
-
-        if not month_rows:
-            st.info("В выбранном месяце акций не найдено.")
-        else:
-            month_df = pd.DataFrame(month_rows)
-            hist_df = pd.DataFrame(history_rows) if history_rows else df_cvm.iloc[0:0]
-
-            out_df = _fc.forecast_dataframe(month_df, hist_df)
-
-            # Сводка
-            sum_dt = out_df["Доп ТО, ₽"].dropna().sum()
-            sum_sk = out_df["Скидка, ₽"].dropna().sum()
-            sum_pl = out_df["PL, ₽"].dropna().sum()
-            sum_cl = out_df["Кол-во клиентов"].dropna().sum()
-
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Акций", f"{len(out_df)}")
-            m2.metric("Σ клиентов", f"{int(sum_cl):,}".replace(",", " "))
-            m3.metric("Σ Доп ТО, ₽", f"{int(sum_dt):,}".replace(",", " "))
-            m4.metric("Σ PL, ₽", f"{int(sum_pl):,}".replace(",", " "),
-                      delta=f"скидка: {int(sum_sk):,}".replace(",", " "))
-
-            display_df = out_df.copy()
-            for col in ("Доп ТО, ₽", "Скидка, ₽", "PL, ₽", "Кол-во клиентов"):
-                if col in display_df.columns:
-                    display_df[col] = display_df[col].apply(
-                        lambda x: f"{int(x):,}".replace(",", " ") if pd.notna(x) else ""
-                    )
-            st.dataframe(display_df, use_container_width=True, height=520)
-
-            # XLSX
-            import io
-            buf = io.BytesIO()
-            with pd.ExcelWriter(buf, engine="openpyxl") as wr:
-                out_df.to_excel(wr, sheet_name=f"{_MONTH_NAMES_F.get(sel_m,'')}", index=False)
-            st.download_button(
-                "Скачать прогноз (XLSX)",
-                data=buf.getvalue(),
-                file_name=f"прогноз_{sel_y}-{sel_m:02d}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-            with st.expander("Методика расчёта", expanded=False):
-                st.markdown(
-                    "- **Формула PL:** `PL = Доп ТО × 0.30 − Скидка` "
-                    "(маржа 30% — выведена из 10+ заполненных акций октября 2025)\n"
-                    "- **Если акция уже заполнена** в CVM offline (есть отклик и Доп ТО) — "
-                    "значения берутся как план без перерасчёта.\n"
-                    "- **Иначе** прогноз = медиана `per-client` метрик аналогов "
-                    "× количество клиентов:\n"
-                    "  1. Сначала ищем точные аналоги — *сегмент + механика + категория*.\n"
-                    "  2. Если <2 — расширяем до *сегмент + механика*.\n"
-                    "  3. Дальше — *только механика*, затем *только сегмент*, "
-                    "в крайнем случае глобальная медиана.\n"
-                    "- **Классификация механик:** BONUS_GIFT (Дарим N монет), "
-                    "BONUS_THRESHOLD (Дарим N монет на чек от), CASHBACK_PCT, "
-                    "DISCOUNT_PCT, DISCOUNT_THRESHOLD, COUPON, OTHER.\n"
-                    "- **Сегментные группы:** ACTIVE_NEW, CHURN_SLEEP, ALL_SEG, NICHE."
-                )
-
-
-# ═════════════════════════════════════════════════════════════════════════════
-#  PAGE: 💡 Идеи акций
-# ═════════════════════════════════════════════════════════════════════════════
-
-elif _nav_page == "Идеи акций":
-    import forecast as _fc
-
-    dx_page_header(
-        "Аналитика и инсайты",
-        "Идеи акций",
-        "Подсказки по пробелам в плане, сезонным окнам и топ-исторических акциям. Источник идей для следующих кампаний.",
-    )
-
-    sid = st.session_state.get(
-        "spreadsheet_id", "1-jsqs-YChB9uN56PcQ2aWqR01MW3O-uaTunNKYZJ7IY"
-    )
-    df_cvm = load_cvm_data(sid)
-
-    if df_cvm.empty:
-        st.warning("Нет данных.")
-    else:
-        _MONTH_NAMES_I = {
-            1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
-            5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
-            9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
-        }
-        _MONTH_MAP_I = {v: k for k, v in _MONTH_NAMES_I.items()}
-
-        ymi = []
-        if "Год" in df_cvm.columns and "Месяц" in df_cvm.columns:
-            for _, _r in df_cvm[["Год", "Месяц"]].drop_duplicates().iterrows():
-                y, m = str(_r["Год"]).strip(), str(_r["Месяц"]).strip()
-                if y.isdigit() and m.isdigit() and int(y) > 2000:
-                    ymi.append((int(y), int(m)))
-            ymi = sorted(set(ymi))
-        if not ymi:
-            ymi = [(2026, 5)]
-        opts = [f"{_MONTH_NAMES_I.get(m, str(m))} {y}" for y, m in ymi]
-        sel_str = st.selectbox(
-            "Месяц для идей", opts,
-            index=len(opts) - 1, key="ideas_month",
-        )
-        parts = sel_str.split()
-        sel_m = _MONTH_MAP_I.get(parts[0], 5)
-        sel_y = int(parts[1]) if len(parts) > 1 else 2026
-        m_start = _date_cls(sel_y, sel_m, 1)
-        m_end = (_date_cls(sel_y + 1, 1, 1) - timedelta(days=1)
-                 if sel_m == 12
-                 else _date_cls(sel_y, sel_m + 1, 1) - timedelta(days=1))
-
-        # Промо месяца и история
-        month_rows, history_rows = [], []
-        for _, row in df_cvm.iterrows():
-            yh = row.get("Год", sel_y)
-            try:
-                yh = int(yh)
-            except (ValueError, TypeError):
-                yh = sel_y
-            sd = _parse_promo_date(row.get("Старт акции"), yh)
-            ed = _parse_promo_date(row.get("Окончание акции"), yh)
-            if not sd or not ed:
-                continue
-            if ed < sd:
-                sd, ed = ed, sd
-            if ed < m_start:
-                history_rows.append(row)
-            elif sd <= m_end and ed >= m_start:
-                month_rows.append(row)
-
-        month_df = pd.DataFrame(month_rows) if month_rows else df_cvm.iloc[0:0]
-        hist_df = pd.DataFrame(history_rows) if history_rows else df_cvm.iloc[0:0]
-
-        # 1) Покрытие сегментов
-        st.markdown("### Покрытие сегментов в месяце")
-        cov = _fc.segment_coverage(month_df)
-        if cov:
-            cov_df = pd.DataFrame(
-                [{"Сегмент": k, "Акций": v} for k, v in sorted(cov.items(), key=lambda x: -x[1])]
-            )
-            st.dataframe(cov_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("Нет акций в выбранном месяце.")
-
-        # 2) Эвристические идеи: пробелы + сезонность
-        st.markdown("### Идеи на основе пробелов и сезонности")
-        ideas = _fc.gap_ideas(month_df, sel_m)
-        if ideas:
-            for i in ideas:
-                st.markdown(f"- {i}")
-        else:
-            st.success("Пробелов не найдено — план месяца сбалансирован по сегментам/сезону.")
-
-        # 3) Топ исторических аналогов (что копировать)
-        st.markdown("### Топ исторических акций по PL/клиент")
-        st.caption(
-            "Лучшие шаблоны для копирования — высокая прибыльность на клиента. "
-            "Берите как образец механики/категории."
-        )
-        top_df = _fc.top_historical_by_pl_per_client(hist_df, n=15)
-        if top_df.empty:
-            st.info("Недостаточно заполненных исторических данных для рейтинга.")
-        else:
-            disp = top_df.copy()
-            for col in ("Клиенты", "PL, ₽"):
-                if col in disp.columns:
-                    disp[col] = disp[col].apply(
-                        lambda x: f"{int(x):,}".replace(",", " ") if pd.notna(x) else ""
-                    )
-            st.dataframe(disp, use_container_width=True, hide_index=True, height=420)
-
