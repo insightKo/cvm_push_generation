@@ -321,20 +321,36 @@ def save_to_sheets(rows: list, sid: str):
     ws = ss.worksheet("PUSH")
     headers = ws.row_values(1)
 
-    all_rows = []
-    for row_data in rows:
+    def _to_values(row_data):
         row_values = [str(row_data.get(h, "")) for h in headers]
         # Special handling: column index 14 = title_len, column index 16 = body_len
         if len(row_values) > 14 and "__title_len" in row_data:
             row_values[14] = str(row_data["__title_len"])
         if len(row_values) > 16 and "__body_len" in row_data:
             row_values[16] = str(row_data["__body_len"])
-        all_rows.append(row_values)
+        return row_values
 
+    append_rows = []          # новые строки
+    update_batch = []         # обновления готовых ячеек сетки (range -> values)
+    for row_data in rows:
+        row_values = _to_values(row_data)
+        _sheet_row = row_data.get("__sheet_row__")
+        if _sheet_row:
+            # ЗАПОЛНЯЕМ существующую ячейку сетки, а не плодим дубль
+            update_batch.append({
+                "range": f"A{int(_sheet_row)}",
+                "values": [row_values],
+            })
+        else:
+            append_rows.append(row_values)
+
+    # batch_update — один write-запрос на все правки (экономим квоту Sheets)
+    if update_batch:
+        ws.batch_update(update_batch, value_input_option="USER_ENTERED")
     # Один append_rows вместо append_row в цикле:
     # иначе каждая строка = отдельный write-запрос и квота Sheets (429).
-    if all_rows:
-        ws.append_rows(all_rows, value_input_option="USER_ENTERED")
+    if append_rows:
+        ws.append_rows(append_rows, value_input_option="USER_ENTERED")
 
     return True
 
@@ -345,7 +361,6 @@ CONDITIONS_DRAFT_PATH = "cache/conditions_draft.json"
 PROMO_SKUS_PATH = "data/promo_skus.json"
 
 
-@st.cache_data(show_spinner=False)
 def _load_promo_skus_map() -> dict:
     """Загрузить data/promo_skus.json и вернуть {promo_num: 'cat5 cat5 ...'}.
 
@@ -433,6 +448,70 @@ def _norm_num(x):
     if s.endswith(".0"):
         s = s[:-2]
     return s
+
+
+def _build_push_grid_maps(df_push):
+    """Разобрать PUSH-таб на три карты по номеру промо.
+
+    Возвращает (filled_count, grid_rows, total_count):
+      filled_count[num] — сколько строк с УЖЕ ГОТОВЫМ текстом (есть заголовок/текст)
+      grid_rows[num]    — список «ячеек сетки» (дата/время есть, текста нет) →
+                          их надо заполнить сгенерированным пушем в эти же даты
+      total_count[num]  — всего строк по промо (для обратной совместимости)
+    """
+    filled_count, grid_rows, total_count = {}, {}, {}
+    if df_push is None or df_push.empty or "Номер промо" not in df_push.columns:
+        return filled_count, grid_rows, total_count
+
+    def _empty(v):
+        s = str(v).strip()
+        return s == "" or s.lower() in ("nan", "none", "nat")
+
+    for _ridx, pr in df_push.iterrows():
+        num = _norm_num(pr.get("Номер промо"))
+        if not num:
+            continue
+        total_count[num] = total_count.get(num, 0) + 1
+        has_text = (not _empty(pr.get("PUSH заголовок"))) or (not _empty(pr.get("текст PUSH")))
+        has_date = not _empty(pr.get("Дата"))
+        if has_text:
+            filled_count[num] = filled_count.get(num, 0) + 1
+        elif has_date:
+            time_v = str(pr.get("Время", "")).strip()
+            grid_rows.setdefault(num, []).append({
+                "date": str(pr.get("Дата", "")).strip(),
+                "time": "" if _empty(time_v) else time_v,
+                "msg": str(pr.get("Номер msg", "")).strip(),
+                "deeplink": "" if _empty(pr.get("Экран - ссылка")) else str(pr.get("Экран - ссылка")).strip(),
+                # позиция строки в листе (header = строка 1, данные с 0 → +2),
+                # чтобы при сохранении ЗАПОЛНИТЬ ячейку, а не добавить дубль
+                "sheet_row": int(_ridx) + 2 if isinstance(_ridx, (int,)) else None,
+            })
+    return filled_count, grid_rows, total_count
+
+
+def _schedule_from_grid(grid_rows):
+    """Построить schedule из готовых ячеек сетки (даты/время уже заданы планировщиком).
+
+    Сортируем по дате; нумерацию push берём из «Номер msg» сетки, иначе по порядку.
+    """
+    items = []
+    for g in grid_rows:
+        items.append((_parse_promo_date(g.get("date")), g))
+    items.sort(key=lambda x: (x[0] is None, x[0] or _date_cls.max))
+    schedule = []
+    for idx, (d, g) in enumerate(items):
+        msg = g.get("msg", "")
+        schedule.append({
+            "date": g.get("date", ""),
+            "time": g.get("time") or ("10:00" if idx == 0 else "11:00"),
+            "date_obj": d,
+            "type": "start" if idx == 0 else "reminder",
+            "push_number": int(msg) if msg.isdigit() else idx + 1,
+            "deeplink": g.get("deeplink", ""),
+            "sheet_row": g.get("sheet_row"),
+        })
+    return schedule
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -745,6 +824,13 @@ elif _nav_page == "🔧 Условия акций":
         else:
             df_unfilled = df_cvm.copy()
 
+        # Акции с «Настройка = нет» — технические строки (ДЦО/парсинг и т.п.).
+        # Их НЕ генерируем и НЕ показываем в списке.
+        if "Настройка" in df_unfilled.columns:
+            df_unfilled = df_unfilled[
+                df_unfilled["Настройка"].astype(str).str.strip().str.lower() != "нет"
+            ].copy()
+
         # Фильтр по месяцу
         _MONTH_NAMES_COND = {
             1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
@@ -760,7 +846,11 @@ elif _nav_page == "🔧 Условия акций":
             _ym_pairs = sorted(set(_ym_pairs))
             if _ym_pairs:
                 _ym_labels = ["Все"] + [f"{_MONTH_NAMES_COND.get(m, m)} {y}" for y, m in _ym_pairs]
-                _sel_ym = st.selectbox("Месяц", _ym_labels, key="cond_month_filter")
+                _sel_ym = st.selectbox(
+                    "Месяц", _ym_labels,
+                    index=len(_ym_labels) - 1,  # дефолт — последний месяц списка
+                    key="cond_month_filter",
+                )
                 if _sel_ym != "Все":
                     _idx = _ym_labels.index(_sel_ym) - 1
                     _y, _m = _ym_pairs[_idx]
@@ -923,16 +1013,25 @@ elif _nav_page == "🔧 Условия акций":
                         # ── Поле «Категории» (cat5 для CVM offline) ──
                         # Принцип: акция-категория → cat5 категории; акция-рецепт → cat5 ингредиентов.
                         _skus_map = _load_promo_skus_map()
-                        _pre_cats = res.get("Категории") or _skus_map.get(str(res.get("__promo_num", "")), "")
+                        _principle_cats = _skus_map.get(str(res.get("__promo_num", "")), "")
+                        _saved_cats = res.get("Категории") or ""
+                        # Если черновик пуст ИЛИ содержит старый формат (есть ":" с буквами слева)
+                        # → перезаполняем из принципа (плоский список cat5_ext построчно).
+                        _is_legacy_format = any(":" in line for line in _saved_cats.splitlines())
+                        if not _saved_cats or _is_legacy_format:
+                            _pre_cats = _principle_cats
+                        else:
+                            _pre_cats = _saved_cats
                         categories_cat5 = st.text_area(
                             "Категории (cat5 для CVM offline)",
                             value=_pre_cats,
                             key=f"cond_categories_{i}",
-                            height=100,
+                            height=140,
                             help=(
-                                "Список ингредиент: cat5 (по одному в строке). "
-                                "Для блюд — категории ИНГРЕДИЕНТОВ, не готовых блюд. "
-                                "Для категорийных акций — cat5 самой категории."
+                                "Плоский список cat5_ext (по одному коду в строке). "
+                                "Заполняется автоматически из data/promo_skus.json по принципу: "
+                                "для блюд — cat5 ингредиентов, для категорийных акций — cat5 всех "
+                                "подкатегорий. Редактируйте при необходимости."
                             ),
                         )
                         coupon_name = st.text_input(
@@ -1081,25 +1180,39 @@ elif _nav_page == "✨ Генерация PUSH":
         else:
             df_push_promos = df_cvm.copy()
 
-        # Count existing push messages per promo (not exclude!)
-        _existing_push_count = {}  # promo_num -> count of existing messages
-        if not df_push.empty and "Номер промо" in df_push.columns:
-            for val in df_push["Номер промо"].dropna():
-                _pn = _norm_num(val)
-                _existing_push_count[_pn] = _existing_push_count.get(_pn, 0) + 1
+        # Разбираем PUSH-таб:
+        #   _filled_push_count — строки с готовым текстом (настоящие пуши)
+        #   _grid_empty_rows   — «ячейки сетки» (дата/время есть, текста нет) → их генерим
+        #   _existing_push_count — всего строк (обратная совместимость)
+        _filled_push_count, _grid_empty_rows, _existing_push_count = _build_push_grid_maps(df_push)
 
         if "НОМЕР" in df_push_promos.columns:
             df_push_promos["_num_str"] = df_push_promos["НОМЕР"].apply(_norm_num)
-            df_push_promos["_existing_msgs"] = df_push_promos["_num_str"].map(lambda x: _existing_push_count.get(x, 0))
+            # «без push» = нет строк с готовым текстом (пустая сетка считается «без push»)
+            df_push_promos["_existing_msgs"] = df_push_promos["_num_str"].map(lambda x: _filled_push_count.get(x, 0))
 
-        # Month selectbox
-        month_options_gen = ["Апрель 2026", "Май 2026", "Июнь 2026",
-                             "Июль 2026", "Август 2026"]
-        _MONTH_MAP_GEN = {
-            "Январь": 1, "Февраль": 2, "Март": 3, "Апрель": 4,
-            "Май": 5, "Июнь": 6, "Июль": 7, "Август": 8,
-            "Сентябрь": 9, "Октябрь": 10, "Ноябрь": 11, "Декабрь": 12,
+        # Month selectbox — список месяцев формируется ДИНАМИЧЕСКИ из акций df_push_promos,
+        # чтобы не показывать пустые месяцы (типа Июль/Август, если по ним акций нет).
+        _MONTH_NAMES_GEN = {
+            1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+            5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+            9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
         }
+        _MONTH_MAP_GEN = {v: k for k, v in _MONTH_NAMES_GEN.items()}
+
+        _gen_ym_pairs: list[tuple[int, int]] = []
+        if "Год" in df_push_promos.columns and "Месяц" in df_push_promos.columns and not df_push_promos.empty:
+            for _, _r in df_push_promos[["Год", "Месяц"]].drop_duplicates().iterrows():
+                _y, _m = str(_r["Год"]).strip(), str(_r["Месяц"]).strip()
+                if _y.isdigit() and _m.isdigit():
+                    _gen_ym_pairs.append((int(_y), int(_m)))
+        _gen_ym_pairs = sorted(set(_gen_ym_pairs))
+        month_options_gen = [f"{_MONTH_NAMES_GEN.get(m, m)} {y}" for y, m in _gen_ym_pairs]
+        # Если по какой-то причине пар нет — fallback на текущий месяц
+        if not month_options_gen:
+            _today = _date_cls.today()
+            month_options_gen = [f"{_MONTH_NAMES_GEN[_today.month]} {_today.year}"]
+            _gen_ym_pairs = [(_today.year, _today.month)]
 
         def _on_month_change():
             for k in ["mass_results", "single_result", "single_selected"]:
@@ -1109,7 +1222,7 @@ elif _nav_page == "✨ Генерация PUSH":
         selected_gen_month = st.selectbox(
             "Месяц",
             month_options_gen,
-            index=0,
+            index=len(month_options_gen) - 1,  # дефолт — последний (самый поздний) месяц
             key="gen_month",
             on_change=_on_month_change,
         )
@@ -1146,11 +1259,17 @@ elif _nav_page == "✨ Генерация PUSH":
         else:
             _no_push = len(df_gen[df_gen.get("_existing_msgs", 0) == 0]) if "_existing_msgs" in df_gen.columns else len(df_gen)
             _has_push = len(df_gen) - _no_push
+            # сколько акций месяца имеют готовую сетку (даты/время) без текста
+            _grid_cnt = 0
+            if "НОМЕР" in df_gen.columns:
+                _grid_cnt = sum(1 for _n in df_gen["НОМЕР"].apply(_norm_num) if _grid_empty_rows.get(_n))
             _caption = f"Акций: {len(df_gen)}"
             if _no_push:
                 _caption += f" (без push: {_no_push})"
             if _has_push:
                 _caption += f" (с push: {_has_push})"
+            if _grid_cnt:
+                _caption += f" (сетка без текста: {_grid_cnt})"
             st.caption(_caption)
 
             # Вкладки массовая / по одной
@@ -1172,8 +1291,15 @@ elif _nav_page == "✨ Генерация PUSH":
                     for idx, (_, row) in enumerate(df_gen.iterrows()):
                         promo = row.to_dict()
                         _promo_num = _norm_num(promo.get("НОМЕР"))
-                        _existing_count = _existing_push_count.get(_promo_num, 0)
-                        schedule = calculate_push_schedule(promo)
+                        _grid = _grid_empty_rows.get(_promo_num, [])
+                        if _grid:
+                            # Сетка уже есть (даты/время заданы) — генерим текст ПОД эти ячейки
+                            schedule = _schedule_from_grid(_grid)
+                            _existing_count = 0  # нумерация берётся из сетки, не сдвигаем
+                        else:
+                            schedule = calculate_push_schedule(promo)
+                            # сдвигаем нумерацию только за уже ГОТОВЫМИ (с текстом) пушами
+                            _existing_count = _filled_push_count.get(_promo_num, 0)
                         try:
                             result = generate_push_texts(
                                 promo=promo,
@@ -1186,8 +1312,17 @@ elif _nav_page == "✨ Генерация PUSH":
                                 anthropic_key=ai_key if ai_provider == "anthropic" else None,
                                 openai_key=ai_key if ai_provider == "openai" else None,
                             )
-                            # Сдвигаем нумерацию push если уже есть сообщения
-                            if _existing_count > 0 and "pushes" in result:
+                            if _grid and "pushes" in result:
+                                # Привязываем сгенерированные тексты к ячейкам сетки:
+                                # дата/время/номер msg берём из сетки (она авторитетна)
+                                for _pi, _p in enumerate(result["pushes"]):
+                                    if _pi < len(schedule):
+                                        _s = schedule[_pi]
+                                        _p["push_number"] = _s.get("push_number", _pi + 1)
+                                        _p["date"] = _s.get("date", _p.get("date", ""))
+                                        _p["time"] = _s.get("time", _p.get("time", "10:00"))
+                            elif _existing_count > 0 and "pushes" in result:
+                                # Сдвигаем нумерацию push если уже есть готовые сообщения
                                 for _p in result["pushes"]:
                                     _p["push_number"] = _p.get("push_number", 1) + _existing_count
                             # Auto deeplink
@@ -1198,6 +1333,10 @@ elif _nav_page == "✨ Генерация PUSH":
                                 cat = str(promo.get("Название промо", ""))
                                 dl = find_best_deeplink(cat)
                                 auto_deeplink = dl["deeplink"] if dl else ""
+                            # Если в сетке уже проставлен deeplink — используем его
+                            _grid_dl = next((s.get("deeplink") for s in schedule if s.get("deeplink")), "") if _grid else ""
+                            if _grid_dl:
+                                auto_deeplink = _grid_dl
 
                             all_results.append({
                                 "promo": promo,
@@ -1225,8 +1364,15 @@ elif _nav_page == "✨ Генерация PUSH":
                         auto_deeplink = item["auto_deeplink"]
                         promo_num = _norm_num(promo.get("НОМЕР"))
                         promo_name = str(promo.get("Название промо", ""))
-                        _ec = _existing_push_count.get(promo_num, 0)
-                        _existing_badge = f" (уже {_ec} msg)" if _ec > 0 else ""
+                        _sched = item.get("schedule", [])
+                        _ec = _filled_push_count.get(promo_num, 0)
+                        _gc = len(_grid_empty_rows.get(promo_num, []))
+                        _badge_parts = []
+                        if _ec:
+                            _badge_parts.append(f"уже {_ec} msg")
+                        if _gc:
+                            _badge_parts.append(f"по сетке: {_gc}")
+                        _existing_badge = f" ({', '.join(_badge_parts)})" if _badge_parts else ""
 
                         _check_col, _exp_col = st.columns([0.05, 0.95])
                         with _check_col:
@@ -1284,9 +1430,13 @@ elif _nav_page == "✨ Генерация PUSH":
                                         label_visibility="collapsed",
                                     )
                                 with pcol3:
+                                    # deeplink из ячейки сетки имеет приоритет над авто
+                                    _grid_dl_default = ""
+                                    if p_idx < len(_sched):
+                                        _grid_dl_default = _sched[p_idx].get("deeplink", "")
                                     push_deeplink_val = st.text_input(
                                         "Deeplink",
-                                        value=auto_deeplink,
+                                        value=_grid_dl_default or auto_deeplink,
                                         key=f"mass_dl_{i}_{p_idx}",
                                         label_visibility="collapsed",
                                     )
@@ -1304,11 +1454,13 @@ elif _nav_page == "✨ Генерация PUSH":
                                     height=68,
                                     label_visibility="collapsed",
                                 )
+                                from ai_generator import is_balance_promo as _is_bal
+                                _body_lim = 200 if _is_bal(promo) else 120
                                 tlen = len(edited_title)
                                 blen = len(edited_body)
                                 t_ok = "🟢" if tlen <= 35 else "🔴"
-                                b_ok = "🟢" if blen <= 120 else "🔴"
-                                st.caption(f"Заголовок: {t_ok} {tlen}/35 | Текст: {b_ok} {blen}/120")
+                                b_ok = "🟢" if blen <= _body_lim else "🔴"
+                                st.caption(f"Заголовок: {t_ok} {tlen}/35 | Текст: {b_ok} {blen}/{_body_lim}")
 
                     # Save button
                     if st.button("💾 Сохранить выбранные", type="primary", key="save_mass"):
@@ -1319,6 +1471,7 @@ elif _nav_page == "✨ Генерация PUSH":
                             promo = item["promo"]
                             result = item["result"]
                             pushes = result.get("pushes", [])
+                            _item_sched = item.get("schedule", [])
 
                             for p_idx, push_data in enumerate(pushes):
                                 push_num = push_data.get("push_number", p_idx + 1)
@@ -1360,6 +1513,10 @@ elif _nav_page == "✨ Генерация PUSH":
                                     "Текст купона": "",
                                     "Кнопка": "",
                                 }
+                                # Если push привязан к ячейке сетки — обновляем её строку,
+                                # а не добавляем новую (иначе дубль с пустой ячейкой)
+                                if p_idx < len(_item_sched) and _item_sched[p_idx].get("sheet_row"):
+                                    row["__sheet_row__"] = _item_sched[p_idx]["sheet_row"]
                                 rows_to_save.append(row)
 
                         if rows_to_save:
@@ -1403,8 +1560,11 @@ elif _nav_page == "✨ Генерация PUSH":
 
                     # Показать количество уже существующих push
                     _sel_num = _norm_num(selected_promo.get("НОМЕР"))
-                    _sel_existing = _existing_push_count.get(_sel_num, 0)
-                    if _sel_existing > 0:
+                    _sel_existing = _filled_push_count.get(_sel_num, 0)
+                    _sel_grid = _grid_empty_rows.get(_sel_num, [])
+                    if _sel_grid:
+                        st.info(f"У этой акции есть готовая сетка ({len(_sel_grid)} ячеек) без текста. Сгенерирую push под эти даты/время.")
+                    elif _sel_existing > 0:
                         st.info(f"У этой акции уже есть {_sel_existing} push-сообщений. Новые будут нумероваться с #{_sel_existing + 1}")
 
                     # Promo details
@@ -1517,7 +1677,11 @@ elif _nav_page == "✨ Генерация PUSH":
                             _needs_activation, find_best_deeplink,
                         )
 
-                        schedule = calculate_push_schedule(selected_promo)
+                        # Если есть готовая сетка (даты/время без текста) — генерим под неё
+                        if _sel_grid:
+                            schedule = _schedule_from_grid(_sel_grid)
+                        else:
+                            schedule = calculate_push_schedule(selected_promo)
                         rules = st.session_state.get("generation_rules", "")
                         if extra_rules:
                             rules = rules + "\n\n" + extra_rules
@@ -1540,8 +1704,16 @@ elif _nav_page == "✨ Генерация PUSH":
                                     anthropic_key=ai_key if ai_provider == "anthropic" else None,
                                     openai_key=ai_key if ai_provider == "openai" else None,
                                 )
-                                # Сдвигаем нумерацию если уже есть push
-                                if _sel_existing > 0 and "pushes" in result:
+                                if _sel_grid and "pushes" in result:
+                                    # Привязываем тексты к ячейкам сетки (дата/время/номер msg)
+                                    for _pi, _p in enumerate(result["pushes"]):
+                                        if _pi < len(schedule):
+                                            _s = schedule[_pi]
+                                            _p["push_number"] = _s.get("push_number", _pi + 1)
+                                            _p["date"] = _s.get("date", _p.get("date", ""))
+                                            _p["time"] = _s.get("time", _p.get("time", "10:00"))
+                                elif _sel_existing > 0 and "pushes" in result:
+                                    # Сдвигаем нумерацию если уже есть готовые push
                                     for _p in result["pushes"]:
                                         _p["push_number"] = _p.get("push_number", 1) + _sel_existing
                                 needs_act = _needs_activation(selected_promo)
@@ -1551,6 +1723,10 @@ elif _nav_page == "✨ Генерация PUSH":
                                     cat = str(selected_promo.get("Название промо", ""))
                                     dl = find_best_deeplink(cat)
                                     auto_dl = dl["deeplink"] if dl else ""
+                                # deeplink из сетки приоритетнее авто
+                                _grid_dl = next((s.get("deeplink") for s in schedule if s.get("deeplink")), "") if _sel_grid else ""
+                                if _grid_dl:
+                                    auto_dl = _grid_dl
 
                                 st.session_state.single_result = {
                                     "result": result,
@@ -1568,6 +1744,7 @@ elif _nav_page == "✨ Генерация PUSH":
                         result = sr["result"]
                         promo = sr["promo"]
                         auto_dl = sr["auto_deeplink"]
+                        _sr_sched = sr.get("schedule", [])
 
                         st.markdown("### Результаты")
 
@@ -1609,9 +1786,12 @@ elif _nav_page == "✨ Генерация PUSH":
                                     key=f"single_time_{p_idx}",
                                 )
                             with scol3:
+                                _sr_grid_dl = ""
+                                if p_idx < len(_sr_sched):
+                                    _sr_grid_dl = _sr_sched[p_idx].get("deeplink", "")
                                 s_dl = st.text_input(
                                     "Deeplink",
-                                    value=auto_dl,
+                                    value=_sr_grid_dl or auto_dl,
                                     key=f"single_dl_{p_idx}",
                                 )
 
@@ -1637,16 +1817,19 @@ elif _nav_page == "✨ Генерация PUSH":
                                         key=f"single_body_{vkey}",
                                         height=68,
                                     )
+                                    from ai_generator import is_balance_promo as _is_bal
+                                    _body_lim = 200 if _is_bal(promo) else 120
                                     tlen = len(edited_title)
                                     blen = len(edited_body)
                                     t_ok = "🟢" if tlen <= 35 else "🔴"
-                                    b_ok = "🟢" if blen <= 120 else "🔴"
-                                    st.caption(f"Заголовок: {t_ok} {tlen}/35 | Текст: {b_ok} {blen}/120")
+                                    b_ok = "🟢" if blen <= _body_lim else "🔴"
+                                    st.caption(f"Заголовок: {t_ok} {tlen}/35 | Текст: {b_ok} {blen}/{_body_lim}")
 
                         # Save approved variants
                         st.markdown("---")
                         if st.button("💾 Сохранить выбранные варианты", type="primary", key="save_single"):
                             rows_to_save = []
+                            _used_grid_rows = set()  # ячейку сетки заполняем один раз
                             for p_idx, push_data in enumerate(pushes):
                                 push_num = push_data.get("push_number", p_idx + 1)
                                 variants = push_data.get("variants", [])
@@ -1692,6 +1875,11 @@ elif _nav_page == "✨ Генерация PUSH":
                                         "Текст купона": "",
                                         "Кнопка": "",
                                     }
+                                    # Привязка к ячейке сетки — обновляем её строку (один раз)
+                                    _sr = _sr_sched[p_idx].get("sheet_row") if p_idx < len(_sr_sched) else None
+                                    if _sr and p_idx not in _used_grid_rows:
+                                        row["__sheet_row__"] = _sr
+                                        _used_grid_rows.add(p_idx)
                                     rows_to_save.append(row)
 
                             if rows_to_save:
@@ -1853,9 +2041,9 @@ elif _nav_page == "🎬 Контентные акции":
                                 height=68,
                             )
                             _tlen, _blen = len(_pt), len(_pb)
-                            _tok = "🟢" if _tlen <= 35 else "🔴"
-                            _bok = "🟢" if _blen <= 120 else "🔴"
-                            st.caption(f"Заголовок: {_tok} {_tlen}/35 | Текст: {_bok} {_blen}/120")
+                            _tok = "🟢" if _tlen <= 30 else "🔴"
+                            _bok = "🟢" if _blen <= 100 else "🔴"
+                            st.caption(f"Заголовок: {_tok} {_tlen}/30 | Текст: {_bok} {_blen}/100")
 
                             _cont = st.text_area(
                                 "Описание серии (карточка в приложении)",
@@ -1864,8 +2052,8 @@ elif _nav_page == "🎬 Контентные акции":
                                 height=140,
                             )
                             _clen = len(_cont)
-                            _cok = "🟢" if _clen <= 500 else "🔴"
-                            st.caption(f"Описание: {_cok} {_clen}/500")
+                            _cok = "🟢" if _clen <= 200 else "🔴"
+                            st.caption(f"Описание: {_cok} {_clen}/200")
                             _cn, _cb = st.columns([1, 1])
                             with _cn:
                                 st.text_input(
@@ -2034,7 +2222,7 @@ elif _nav_page == "📋 Типы акций":
 
         st.markdown("#### Ось 2: Тип выгоды")
         st.dataframe(pd.DataFrame([
-            {"Код": "cashback_pct", "Тип": "Кешбэк X%", "Ключевые слова": "кешбэк / кэшбэк / вернём / возвращаем / обратно на счет + %", "Пример": "20% кешбэк на овощи"},
+            {"Код": "cashback_pct", "Тип": "Кешбэк X%", "Ключевые слова": "кешбэк / кешбэк / вернём / возвращаем / обратно на счет + %", "Пример": "20% кешбэк на овощи"},
             {"Код": "cashback_rub", "Тип": "Кешбэк X₽", "Ключевые слова": "кешбэк / вернём / возвращаем + ₽/р.", "Пример": "Вернём 300₽ с чека"},
             {"Код": "discount_pct", "Тип": "Скидка X%", "Ключевые слова": "скидка / скидки + %", "Пример": "-10% на зубную пасту"},
             {"Код": "discount_rub", "Тип": "Скидка X₽", "Ключевые слова": "скидка / купон на скидку + ₽/р.", "Пример": "Скидка 50₽ по купону"},
@@ -2077,7 +2265,7 @@ elif _nav_page == "📋 Типы акций":
 
         st.markdown("---")
         st.markdown("""
-**Синонимы кешбэка:** кешбэк = кэшбэк = вернём = возвращаем = обратно на счет
+**Синонимы кешбэка:** кешбэк = кешбэк = вернём = возвращаем = обратно на счет
 
 **Определение gift:** «дарим» + число, или число + «монет» без маркеров кешбэка/скидки
 
