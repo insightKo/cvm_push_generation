@@ -1018,10 +1018,16 @@ elif _nav_page == "🔧 Условия акций":
                         # Если черновик пуст ИЛИ содержит старый формат (есть ":" с буквами слева)
                         # → перезаполняем из принципа (плоский список cat5_ext построчно).
                         _is_legacy_format = any(":" in line for line in _saved_cats.splitlines())
-                        if not _saved_cats or _is_legacy_format:
+                        # Приоритет: рецептные акции — из data/promo_skus.json (curated);
+                        # остальные — из подбора по ассортименту (res["Категории"]) / правок пользователя.
+                        if _principle_cats:
                             _pre_cats = _principle_cats
-                        else:
+                        elif _saved_cats and not _is_legacy_format:
                             _pre_cats = _saved_cats
+                        else:
+                            _pre_cats = ""
+                        # Что отбросила проверка cat5 — показываем под полем.
+                        _cat5_rejected = res.get("__cat5_rejected") or []
                         categories_cat5 = st.text_area(
                             "Категории (cat5 для CVM offline)",
                             value=_pre_cats,
@@ -1034,6 +1040,11 @@ elif _nav_page == "🔧 Условия акций":
                                 "подкатегорий. Редактируйте при необходимости."
                             ),
                         )
+                        if _cat5_rejected:
+                            _rej = ", ".join(
+                                f"{r.get('code')} ({r.get('reason','')})" for r in _cat5_rejected[:6]
+                            )
+                            st.caption(f"🔎 Проверка cat5 отбросила лишнее: {_rej}")
                         coupon_name = st.text_input(
                             "Название информационного купона для МП",
                             value=res.get("Название информационного купона для МП", ""),
@@ -1128,6 +1139,17 @@ elif _nav_page == "🔧 Условия акций":
                                             "range": cell_a1,
                                             "values": [[er.get(field, "")]],
                                         })
+                                # Если купон заполнен — проставляем флаг «Купон» = «да».
+                                _coupon_filled = bool(
+                                    str(er.get("Текст на информационном купоне / слип-чеке", "")).strip()
+                                    or str(er.get("Название информационного купона для МП", "")).strip()
+                                )
+                                if _coupon_filled and "Купон" in headers:
+                                    _ccol = headers.index("Купон") + 1
+                                    batch.append({
+                                        "range": gspread.utils.rowcol_to_a1(sheet_row, _ccol),
+                                        "values": [["да"]],
+                                    })
                                 saved += 1
 
                             # Один batch-запрос вместо update_cell в цикле:
