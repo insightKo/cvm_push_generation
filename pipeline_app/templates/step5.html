@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Шаг 5 · Сегмент{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 5</div>
+  <h1>Сегмент</h1>
+  <p>Узкий подсегмент под акцию: узкая категория = узкая аудитория. Рекомендация учитывает категорию и механику.</p>
+</div>
+
+{% if promos %}
+<div class="card">
+  <h2>Сегментация выбранных акций</h2>
+  <table>
+    <thead><tr><th>Акция</th><th>Категория</th><th>Сейчас</th><th>Рекомендация</th><th>Выбрать</th><th>Назначено</th></tr></thead>
+    <tbody>
+      {% for p in promos %}
+      <tr>
+        <td><strong>{{ p.name }}</strong> <span class="muted">№{{ p.num }}</span></td>
+        <td>{{ p.category }}</td>
+        <td><span class="badge gray">{{ p.current or '—' }}</span></td>
+        <td>
+          {% for s in p.recs %}<span class="badge purple">{{ s }}</span> {% endfor %}
+          <div class="muted" style="font-size:12px;margin-top:3px">{{ p.why }}</div>
+        </td>
+        <td>
+          <form hx-post="/step5/assign" hx-target="#seg-{{ p.num }}" hx-trigger="change">
+            <input type="hidden" name="num" value="{{ p.num }}">
+            <select name="segment">
+              <option value="">— не выбрано —</option>
+              {% for s in segments %}<option value="{{ s }}" {% if assigned.get(p.num) == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select>
+          </form>
+        </td>
+        <td id="seg-{{ p.num }}">
+          {% if assigned.get(p.num) %}<span class="badge green">{{ assigned.get(p.num) }}</span>{% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card"><div class="notice">Не выбрано ни одной акции. Вернись на <a href="/step3">шаг 3</a>.</div></div>
+{% endif %}
+
+<div class="card">
+  <h2>Справочник сегментов</h2>
+  <div class="row">
+    {% for s in segments %}<span class="badge gray">{{ s }}</span>{% endfor %}
+  </div>
+</div>
+{% endblock %}

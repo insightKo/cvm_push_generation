@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Шаг 3 · Выбор предложения{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 3</div>
+  <h1>Выбор предложения · {{ month or '—' }}</h1>
+  <p>Отметь акции, которые берём в работу. Отсортировано по приоритету (шаг 0). Выбор сохраняется и переходит на шаги 4–8.</p>
+</div>
+
+<form hx-post="/step3/select" hx-target="#sel-summary" hx-trigger="change">
+  <div class="card">
+    <div id="sel-summary">{% include "partials/selection_summary.html" %}</div>
+  </div>
+  <div class="card">
+    <h2>Акции-кандидаты</h2>
+    {% if rows %}
+    <table>
+      <thead><tr><th>✓</th><th>Приоритет</th><th>Акция</th><th>Сегмент</th><th>Категория</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><input type="checkbox" name="num" value="{{ r.num }}" {% if r.num in selected %}checked{% endif %}></td>
+          <td><span class="prio">{{ r.priority }}</span></td>
+          <td><strong>{{ r.name }}</strong> <span class="muted">№{{ r.num }}</span></td>
+          <td><span class="badge gray">{{ r.segment }}</span></td>
+          <td>{{ r.category }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="notice">Нет акций в этом месяце.</div>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}

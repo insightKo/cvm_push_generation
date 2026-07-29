@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Шаг 8 · Коммуникации{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 8</div>
+  <h1>Коммуникации и запуск</h1>
+  <p>Тексты пушей (стиль Дикси), расписание и условия акции. Выбери акцию из отобранных на шаге 3.</p>
+</div>
+
+{% if not promos %}
+<div class="card"><div class="notice">Не выбрано ни одной акции. Вернись на <a href="/step3">шаг 3</a>.</div></div>
+{% else %}
+
+<div class="card">
+  <form hx-get="/step8" hx-trigger="change" hx-target="body" hx-push-url="true">
+    <label class="fld">Акция</label>
+    <select name="promo">
+      {% for p in promos %}
+        <option value="{{ p.__num }}" {% if chosen and chosen.__num == p.__num %}selected{% endif %}>№{{ p.__num }} — {{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if chosen %}
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Акция</h3>
+    <div style="font-size:18px;font-weight:700">{{ chosen.name }}</div>
+    <div class="row" style="margin-top:8px">
+      <span class="badge gray">{{ chosen.segment }}</span>
+      <span class="badge purple">{{ chosen.Категория or '—' }}</span>
+      {% if classification and not classification.error %}
+        {% for k, v in classification.items() %}<span class="badge orange">{{ k }}: {{ v }}</span>{% endfor %}
+      {% endif %}
+    </div>
+    {% if classification and classification.error %}
+      <div class="notice err" style="margin-top:10px">Ошибка классификации/генерации: {{ classification.error }}</div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3>Условия акции</h3>
+    <p class="muted" style="font-size:13px">{% if has_key %}Генерация через Claude API.{% else %}Не задан ANTHROPIC_API_KEY — условия недоступны.{% endif %}</p>
+    <form hx-post="/step8/conditions" hx-target="#conditions-box">
+      <input type="hidden" name="promo" value="{{ chosen.__num }}">
+      <button class="btn purple" {% if not has_key %}disabled{% endif %}>Сгенерировать условия</button>
+      <span class="htmx-indicator muted">генерация…</span>
+    </form>
+    <div id="conditions-box" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Push-тексты</h2>
+  {% if pushes %}
+    {% for push in pushes %}
+    <div style="border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px">
+      <div class="row" style="justify-content:space-between">
+        <strong>Push #{{ push.push_number }} · {{ push.type }}</strong>
+        <span class="muted">{{ push.date }} {{ push.time }}</span>
+      </div>
+      <div class="grid cols-2" style="margin-top:10px">
+        {% for v in push.variants %}
+        <div style="background:#fafaff;border-radius:10px;padding:12px">
+          <div style="font-weight:700">{{ v.title }}</div>
+          <div class="muted" style="font-size:11px">заголовок: {{ v.title_length }}/{{ 35 }}</div>
+          <div style="margin-top:6px">{{ v.body }}</div>
+          <div class="muted" style="font-size:11px">текст: {{ v.body_length }}/{{ 120 }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="notice">Не удалось сгенерировать push-тексты для этой акции (проверь данные акции).</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

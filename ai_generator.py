@@ -897,12 +897,15 @@ def classify_promo(promo: dict) -> dict:
     has_category = bool(cat.get("category") or cat.get("products_text"))
     # "все товары" / "на покупки" = all
     _cat_text = (cat.get("category", "") + " " + cat.get("products_text", "")).lower().strip()
-    _all_markers = ("все товары", "все", "на покупки", "на покупки в дикси")
-    # Проверяем: пустое ИЛИ содержит только "все товары"
+    _all_markers = ("все товары", "все", "на покупки", "на покупки в дикси",
+                    "любые покупки", "на любые покупки", "любые товары", "любую покупку")
+    # Проверяем: пустое ИЛИ содержит только "все/любые товары/покупки"
     _cat_words = set(_cat_text.split())
     _is_all = (not _cat_text
                or _cat_text in _all_markers
-               or _cat_words <= {"все", "товары", "на", "покупки", "в", "дикси"})
+               or _cat_words <= {"все", "любые", "любых", "любую", "любой",
+                                 "товары", "товар", "на", "покупки", "покупку",
+                                 "покупок", "в", "дикси"})
     if _is_all:
         scope = "all"
     elif has_category:
@@ -1294,22 +1297,20 @@ _PUSH_PAIRS = {
         ("{emoji}Скидка {value} — активируй",
          "{date_context}.{humor} {cta}"),
     ],
-    # ── YES + GIFT ──
+    # ── YES + GIFT (монеты на любые покупки) ──
     ("yes", "gift", "all", "*", "*"): [
-        ("{emoji}Активируй {value} монетами",
-         "{date_context}. Монеты ждут на карте!{humor} {cta}"),
-        ("{emoji}{value} монетами — активируй!",
-         "{date_context}. Активируй и трать в магазине.{humor} {cta}"),
-        ("{emoji}Забери {value} монетами",
-         "{date_context}. Активируй — монеты на карте!{humor} {cta}"),
-        ("{emoji}{value} ждут активации",
-         "{date_context}. Активируй и не забудь потратить!{humor} {cta}"),
+        ("{emoji}Забери {coins}",
+         "Активируй — и трать на любые покупки в магазине и в приложении. Успей {date_context}. {cta}"),
+        ("{emoji}{coins} — твои",
+         "Активируй и потрать в ДИКСИ на что захочешь: на кассе или в приложении. Успей {date_context}. {cta}"),
+        ("{emoji}Активируй {coins}",
+         "Трать на любые покупки — и в магазине, и онлайн. Успей {date_context}. {cta}"),
     ],
     ("yes", "gift", "category", "*", "*"): [
-        ("{emoji}Активируй {value} за {products_short}",
-         "{products} {date_context}. Монеты начисляются после покупки.{humor} {cta}"),
-        ("{emoji}{value} за {products_short} — активируй",
-         "{products} {date_context}.{humor} {cta}"),
+        ("{emoji}{coins} за {products_short}",
+         "Активируй и трать монеты в магазине и в приложении. Успей {date_context}. {cta}"),
+        ("{emoji}Забери {coins}",
+         "{products} — активируй и трать монеты в магазине и в приложении. Успей {date_context}. {cta}"),
     ],
     # ── НАПОМИНАНИЯ: коммуникация (без value, без urgency) ──
     ("no", "communication", "*", "*", "reminder"): [
@@ -1614,6 +1615,9 @@ _CATEGORY_EMOJI = {
     "хими": "🧼", "бытов": "🧼", "стир": "🧼", "чист": "✨",
     "обув": "👟", "мыл": "🧴", "шампун": "💇", "гигиен": "🧴", "зуб": "🪥",
     "порош": "🧼", "средств": "🧹", "губк": "🧽",
+    # ══ Защита от насекомых (репелленты) ══
+    "репел": "🦟", "реппел": "🦟", "комар": "🦟", "москит": "🦟",
+    "клещ": "🦟", "насеком": "🦟", "мошк": "🦟", "фумигат": "🦟",
     # ══ Мясо и птица ══
     "мясо": "🥩", "говядин": "🥩", "свинин": "🥩", "фарш": "🥩",
     "баранин": "🥩", "телятин": "🥩", "рёбрышк": "🥩",
@@ -2371,9 +2375,10 @@ def _get_humor(category: str, products_text: str) -> str:
             continue  # общие — только как fallback
         if keyword in text:
             all_jokes.extend(jokes)
-    # Если ничего не нашли — используем общие шутки
+    # Если ничего не нашли — НЕ подставляем общий филлер («вода»: «Набирай полную
+    # корзину», «Кошелёк — целый» и т.п.). Лучше пусто, чем бессмысленный текст.
     if not all_jokes:
-        all_jokes = _HUMOR.get("__general__", [])
+        return ""
     return random.choice(all_jokes) if all_jokes else ""
 
 
@@ -2746,8 +2751,13 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
     segment_greeting = _get_segment_greeting(segment)
     segment_name = segment["name"] if segment else ""
 
+    # Монеты: чистое «N монет» для монетных/подарочных акций, чтобы в тексте не было «N₽»
+    _coins_num = re.sub(r"\D", "", benefit.get("value", "")) if benefit.get("type") in ("bonus", "gift") else ""
+    coins_text = f"{_coins_num} монет" if _coins_num else "монеты"
+
     fill = {
         "value": benefit["value"] or "супер",
+        "coins": coins_text,
         "benefit": benefit["text"] or "выгода",
         "details": details,
         "details_short": details_short,
@@ -2963,8 +2973,10 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
                      "{date_context}. Бери в ДИКСИ: {products}. {cta}"),
                 ]
 
-        # Пятничные/выходные пары — добавляем (НЕ для рецептных, чтобы не размывать блюдо)
-        if push_type != "reminder" and not dish_name:
+        # Пятничные/выходные пары — только для акций «на всё» (не gift/монеты и не
+        # категорийных: иначе заголовок «Выходные +20%» прячет, на что скидка).
+        if (push_type != "reminder" and not dish_name
+                and _ben not in ("gift", "communication") and _sco == "all"):
             if is_friday:
                 pairs_pool.append(("{emoji}Пятничная выгода {value}",
                                    "{products} {date_context}.{humor} {cta}"))
@@ -3009,6 +3021,11 @@ def generate_builtin(promo: dict, rules: str, num_variants: int,
             # Чистим двойные пробелы
             title = re.sub(r"  +", " ", title).strip()
             body = re.sub(r"  +", " ", body).strip()
+            # Убираем «висящее» тире/пунктуацию в начале (когда {products} ушёл в заголовок
+            # и антидубль оставил тело вида «— только сегодня!»)
+            body = re.sub(r"^[—–\-.,;:!]\s*", "", body).strip()
+            if body:
+                body = body[0].upper() + body[1:]
 
             # ── Защита CTA в рецептных push: перерендерим body с подрезкой ингредиентов ──
             # Если body длиннее лимита и это рецептный шаблон с {products} — обрежем список

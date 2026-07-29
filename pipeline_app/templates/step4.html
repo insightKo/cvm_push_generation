@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Шаг 4 · Механика + экономика{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 4</div>
+  <h1>Механика + экономика</h1>
+  <p>Подбери механику под цель и сегмент из библиотеки, назначь выбранным акциям и проверь юнит-экономику.</p>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>Подбор механики под цель</h2>
+    <form hx-post="/step4/recommend" hx-target="#mech-recs" hx-trigger="change, submit">
+      <div class="row">
+        <div style="flex:1">
+          <label class="fld">Цель</label>
+          <select name="goal">{% for k, lbl in goals %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select>
+        </div>
+        <div style="flex:1">
+          <label class="fld">Сегмент (необязательно)</label>
+          <input type="text" name="segment" placeholder="напр. Активные">
+        </div>
+      </div>
+    </form>
+    <div id="mech-recs" style="margin-top:14px"><p class="muted">Выбери цель — покажу подходящие механики.</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Калькулятор юнит-экономики</h2>
+    <form hx-post="/step4/econ" hx-target="#econ-res" hx-trigger="change, submit">
+      <div class="grid cols-2">
+        <div><label class="fld">Клиентов</label><input type="number" name="clients" value="100000"></div>
+        <div><label class="fld">Отклик, %</label><input type="number" step="0.1" name="otklik" value="5"></div>
+        <div><label class="fld">Средний чек, ₽</label><input type="number" name="avg_check" value="700"></div>
+        <div><label class="fld">Глубина выгоды, %</label><input type="number" step="0.1" name="discount" value="15"></div>
+      </div>
+    </form>
+    <div id="econ-res" style="margin-top:14px"><p class="muted">Заполни поля — посчитаю Доп ТО, скидку и PL.</p></div>
+  </div>
+</div>
+
+{% if promos %}
+<div class="card">
+  <h2>Назначение механики выбранным акциям</h2>
+  <table>
+    <thead><tr><th>Акция</th><th>Сегмент</th><th>Механика</th><th>Назначено</th></tr></thead>
+    <tbody>
+      {% for p in promos %}
+      <tr>
+        <td><strong>{{ p.name }}</strong> <span class="muted">№{{ p.num }}</span></td>
+        <td><span class="badge gray">{{ p.segment }}</span></td>
+        <td>
+          <form hx-post="/step4/assign" hx-target="#assigned-{{ p.num }}" hx-trigger="change">
+            <input type="hidden" name="num" value="{{ p.num }}">
+            <select name="mech_id">
+              <option value="">— не выбрано —</option>
+              {% for m in library %}
+                <option value="{{ m.id }}" {% if assigned.get(p.num) == m.id %}selected{% endif %}>{{ m.id }}. {{ m.name }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td id="assigned-{{ p.num }}">
+          {% set m = mech_get(assigned.get(p.num)) %}
+          {% if m %}<span class="badge green">{{ m.name }}</span>{% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card"><div class="notice">Не выбрано ни одной акции. Вернись на <a href="/step3">шаг 3</a> и отметь акции.</div></div>
+{% endif %}
+
+<div class="card">
+  <h2>Библиотека механик · {{ library | length }} типов <span class="muted" style="font-weight:400;font-size:13px">(справочник I_PROMO)</span></h2>
+  <table>
+    <thead><tr><th>ID</th><th>Механика</th><th>Тип</th><th>Порог</th><th>Трафик</th><th>ТО</th><th>Чек</th><th>Маржа</th></tr></thead>
+    <tbody>
+      {% for m in library %}
+      <tr>
+        <td class="muted">{{ m.id }}</td>
+        <td><strong>{{ m.name }}</strong><div class="muted" style="font-size:12px">{{ m.desc }}</div></td>
+        <td><span class="badge purple">{{ m.type }}</span></td>
+        <td>{{ '✓' if m.threshold else '—' }}</td>
+        {% for ax in ['traffic','turnover','avg_check','margin'] %}
+          <td>{{ '●' * m.goal_fit[ax] }}{{ '○' * (3 - m.goal_fit[ax]) }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

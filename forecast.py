@@ -87,7 +87,7 @@ def _mech_type(name: str, desc: str, mech: str, bonus: str) -> str:
 
     if "дарим" in text and ("монет" in text or "бонус" in text or "балл" in text):
         return "BONUS_THRESHOLD" if has_threshold else "BONUS_GIFT"
-    if "кешбэк" in text or "кэшбэк" in text or "cashback" in text:
+    if "кешбэк" in text or "кешбэк" in text or "cashback" in text:
         return "CASHBACK_PCT"
     if "купон" in text:
         return "COUPON"
@@ -121,7 +121,7 @@ def classify(row: dict) -> tuple[str, str, str]:
 
 
 def build_analogue_db(df: pd.DataFrame) -> dict[tuple, list[dict]]:
-    """Группа -> список заполненных исторических акций с per-client-метриками."""
+    """Группа -> список заполненных исторических акций (фактические цифры)."""
     analogues: dict[tuple, list[dict]] = defaultdict(list)
     for _, r in df.iterrows():
         rd = r.to_dict()
@@ -131,14 +131,23 @@ def build_analogue_db(df: pd.DataFrame) -> dict[tuple, list[dict]]:
         if not clients or not otklik or not dop_to:
             continue
         disc = _discount_rub(rd) or 0.0
+        pl = _num(rd.get("PL"))
+        if pl is None:
+            pl = dop_to * MARGIN - disc
         key = classify(rd)
+        # Извлекаем числовое значение бонуса/скидки из ячейки 'Бонусы' / 'Скидка'
+        bonus_val = _num(rd.get("Бонусы"))
         analogues[key].append({
             "num": str(rd.get("НОМЕР", "")).strip(),
             "name": str(rd.get("Название промо", "")).strip(),
-            "otklik": otklik,
-            "dop_to_pc": dop_to / clients,
-            "disc_pc": disc / clients,
+            "segment": str(rd.get("Сегмент", "")).strip(),
+            "category": str(rd.get("Категория", "")).strip(),
+            "bonus": bonus_val,
             "clients": clients,
+            "otklik": otklik,
+            "dop_to": dop_to,
+            "disc": disc,
+            "pl": pl,
         })
     return analogues
 

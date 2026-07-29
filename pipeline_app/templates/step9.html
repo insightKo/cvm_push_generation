@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Шаг 9 · Постанализ{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 9</div>
+  <h1>Постанализ · факт vs прогноз</h1>
+  <p>Факт из расчётов КД против прогноза модели. Дельта показывает точность и питает будущие прогнозы.</p>
+</div>
+
+<div class="grid cols-4">
+  <div class="card"><h3>Факт Доп ТО</h3><div class="kpi sm">{{ tot_fact_to | money }}</div></div>
+  <div class="card"><h3>Прогноз Доп ТО</h3><div class="kpi sm">{{ tot_fcst_to | money }}</div></div>
+  <div class="card"><h3>Факт PL</h3><div class="kpi sm">{{ tot_fact_pl | money }}</div></div>
+  <div class="card"><h3>Прогноз PL</h3><div class="kpi sm">{{ tot_fcst_pl | money }}</div></div>
+</div>
+
+<div class="card">
+  <h2>Факт vs прогноз по акциям</h2>
+  {% if rows %}
+  <table>
+    <thead><tr><th>№</th><th>Акция</th><th>Сегмент</th><th class="num">Факт ТО</th><th class="num">Прогноз ТО</th><th class="num">Факт PL</th><th class="num">Прогноз PL</th><th class="num">Δ PL</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="muted">{{ r.num }}</td>
+        <td><strong>{{ r.name }}</strong></td>
+        <td><span class="badge gray">{{ r.segment }}</span></td>
+        <td class="num">{{ r.fact_to | money }}</td>
+        <td class="num">{{ r.fcst_to | money }}</td>
+        <td class="num">{{ r.fact_pl | money }}</td>
+        <td class="num">{{ r.fcst_pl | money }}</td>
+        <td class="num">
+          {% if r.delta_pl is not none %}
+            <strong style="color:{{ 'var(--green)' if r.delta_pl >= 0 else '#c00' }}">{{ r.delta_pl | money }}</strong>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="notice">Нет расчётов КД в data/ (файлы расчет_КД_*.xlsx). Постанализ появится после первых факт-расчётов.</div>
+  {% endif %}
+</div>
+{% endblock %}

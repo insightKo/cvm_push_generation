@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Шаг 6 · План / сетка{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 6</div>
+  <h1>План / сетка</h1>
+  <p>Календарь выбранных акций по неделям, проверка частот и анти-конфликт механик.</p>
+</div>
+
+{% if count == 0 %}
+<div class="card"><div class="notice">Не выбрано ни одной акции. Вернись на <a href="/step3">шаг 3</a>.</div></div>
+{% else %}
+
+<div class="card">
+  <h2>Анти-конфликт</h2>
+  {% if warns %}
+    {% for w in warns %}
+      <div class="notice {{ 'err' if w.level == 'warn' else '' }}" style="margin-bottom:8px">{{ w.text }}</div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Конфликтов не найдено. Сетка чистая.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Сетка по неделям</h2>
+  {% for week, items in grid.items() %}
+  <h3 style="margin-top:14px">Неделя {{ week }} · {{ items | length }} акц.</h3>
+  <table>
+    <thead><tr><th>Акция</th><th>Сегмент</th><th>Категория</th><th>Механика</th></tr></thead>
+    <tbody>
+      {% for p in items %}
+      <tr>
+        <td><strong>{{ p.name }}</strong> <span class="muted">№{{ p.__num }}</span></td>
+        <td><span class="badge gray">{{ p.segment }}</span></td>
+        <td>{{ p.Категория or '—' }}</td>
+        <td>{% set m = mech_get(p.mech_id) %}{% if m %}<span class="badge purple">{{ m.name }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+  <div style="margin-top:16px"><a class="btn green" href="/step7">К заведению →</a></div>
+</div>
+{% endif %}
+{% endblock %}

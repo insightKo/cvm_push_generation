@@ -1,0 +1,46 @@
+{% if not rows %}
+  <div class="notice">Нет акций для приоритизации в этом месяце. Проверь данные CVM offline или выбери другой месяц.</div>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Приоритет</th>
+      <th>Акция</th>
+      <th>Сегмент</th>
+      {% for ax in axes %}<th class="num">{{ axis_labels[ax] }}</th>{% endfor %}
+      <th>Источник</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="muted">{{ r.rank }}</td>
+      <td>
+        <span class="prio">{{ r.priority }}</span>
+        <div class="bar" style="margin-top:4px"><i style="width:{{ r.priority }}%"></i></div>
+      </td>
+      <td>
+        <strong>{{ r.name or '—' }}</strong>
+        <div class="muted" style="font-size:12px">№{{ r.num }} · {{ r.category or '—' }}</div>
+      </td>
+      <td><span class="badge gray">{{ r.segment or '—' }}</span></td>
+      {% for ax in axes %}
+        <td class="num" title="нормировано: {{ r.norm[ax] }}">
+          {% if ax == 'avg_check' or ax == 'turnover' or ax == 'margin' %}
+            {{ r.raw[ax] | money }}
+          {% else %}
+            {{ r.raw[ax] | intf }}
+          {% endif %}
+        </td>
+      {% endfor %}
+      <td class="muted" style="font-size:12px">{{ r.source }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="muted" style="font-size:12.5px;margin-top:12px">
+  Композитный балл = взвешенная сумма нормированных (0–100) осей. Трафик = клиенты × отклик; ТО = Доп ТО; средний чек = ТО / покупатели; маржа = PL.
+  Прогноз — из исторических аналогов CVM offline или плановых цифр.
+</p>
+{% endif %}

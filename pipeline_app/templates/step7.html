@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Шаг 7 · Заведение{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 7</div>
+  <h1>Заведение · Manzana Processing + Campaign</h1>
+  <p>Маппинг акций на ID справочников и выгрузка для заведения кампании.</p>
+</div>
+
+{% if not rows %}
+<div class="card"><div class="notice">Не выбрано ни одной акции. Вернись на <a href="/step3">шаг 3</a>.</div></div>
+{% else %}
+
+{% if incomplete %}
+<div class="card"><div class="notice err">{{ incomplete | length }} акц. без механики или сегмента — заполни на шагах 4–5 перед заведением.</div></div>
+{% endif %}
+
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <h2 style="margin:0">Карта заведения · {{ rows | length }} акц.</h2>
+    <a class="btn green" href="/step7/export.xlsx">⬇ Скачать Excel</a>
+  </div>
+  <table style="margin-top:14px">
+    <thead><tr><th>№</th><th>Название</th><th>Сегмент (ID)</th><th>Механика (ID)</th><th>Канал</th><th>Период</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="muted">{{ r['НОМЕР'] }}</td>
+        <td><strong>{{ r['Название промо'] }}</strong></td>
+        <td>{{ r['Сегмент'] }} <span class="badge {{ 'green' if r['ID сегмента'] else 'gray' }}">{{ r['ID сегмента'] or '—' }}</span></td>
+        <td>{{ r['Механика'] or '—' }} <span class="badge {{ 'green' if r['ID механики'] else 'gray' }}">{{ r['ID механики'] or '—' }}</span></td>
+        <td><span class="badge purple">PUSH · 1</span></td>
+        <td class="muted" style="font-size:12px">{{ r['Старт акции'] }} – {{ r['Окончание акции'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:16px"><a class="btn" href="/step8">К коммуникациям →</a></div>
+</div>
+{% endif %}
+{% endblock %}

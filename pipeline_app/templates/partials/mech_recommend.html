@@ -1,0 +1,16 @@
+<h3>Лучшие механики · {{ goal_label }}</h3>
+{% if recs %}
+  {% for m in recs %}
+  <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+    <div class="row">
+      <strong>{{ m.id }}. {{ m.name }}</strong>
+      <span class="badge purple">{{ m.type }}</span>
+      {% if m.big_check_only %}<span class="badge orange">большой чек</span>{% endif %}
+    </div>
+    <div class="muted" style="font-size:12.5px;margin-top:3px">{{ m.econ }}</div>
+    <div class="muted" style="font-size:12px;margin-top:3px">Пример: {{ m.example }}</div>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="muted">Нет подходящих механик для этой цели/сегмента.</p>
+{% endif %}

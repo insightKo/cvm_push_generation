@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Шаг 0 · Приоритизация{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 0</div>
+  <h1>Приоритизация акций</h1>
+  <p>Ранжируем акции-кандидаты по бизнес-целям: трафик · товарооборот · средний чек · маржа. Настрой веса под фокус месяца.</p>
+</div>
+
+<div class="card">
+  <h2>Веса целей</h2>
+  <form hx-post="/step0/score" hx-target="#priority-table" hx-trigger="change, submit"
+        hx-include="this" id="weights-form">
+    <div class="row" style="margin-bottom:14px">
+      <div style="flex:1">
+        <label class="fld">Месяц</label>
+        <select name="month">
+          {% for m in months %}
+            <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% for ax in axes %}
+    <div class="weight-row">
+      <label class="fld" style="margin:0">{{ axis_labels[ax] }}</label>
+      <input type="range" name="{{ ax }}" min="0" max="100" value="{{ weights[ax] }}"
+             oninput="this.closest('.weight-row').querySelector('.val').textContent=this.value">
+      <span class="val">{{ weights[ax] }}</span>
+    </div>
+    {% endfor %}
+    <span class="htmx-indicator muted">пересчёт…</span>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Приоритет акций <span class="muted" style="font-weight:400;font-size:13px">— композитный балл 0–100</span></h2>
+  <div id="priority-table">
+    {% include "partials/priority_table.html" %}
+  </div>
+</div>
+{% endblock %}

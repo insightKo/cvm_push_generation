@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Шаг 2 · Прогноз{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 2</div>
+  <h1>Прогноз · {{ month or '—' }}</h1>
+  <p>Uplift и отклик по каждой акции — из исторических аналогов или плановых цифр CVM offline.</p>
+</div>
+
+<div class="grid cols-3">
+  <div class="card"><h3>Акций в плане</h3><div class="kpi">{{ rows | length }}</div></div>
+  <div class="card"><h3>Прогноз Доп ТО</h3><div class="kpi">{{ total_to | money }}</div></div>
+  <div class="card"><h3>Прогноз PL</h3><div class="kpi">{{ total_pl | money }}</div></div>
+</div>
+
+<div class="card">
+  <h2>Прогноз по акциям</h2>
+  {% if rows %}
+  <table>
+    <thead><tr><th>№</th><th>Акция</th><th>Сегмент</th><th class="num">Клиенты</th><th class="num">Отклик, %</th><th class="num">Доп ТО, ₽</th><th class="num">Скидка, ₽</th><th class="num">PL, ₽</th><th>Источник</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="muted">{{ r.num }}</td>
+        <td><strong>{{ r.name }}</strong></td>
+        <td><span class="badge gray">{{ r.segment }}</span></td>
+        <td class="num">{{ r.clients | intf }}</td>
+        <td class="num">{{ r.otklik if r.otklik is not none else '—' }}</td>
+        <td class="num">{{ r.dop_to | money }}</td>
+        <td class="num">{{ r.disc | money }}</td>
+        <td class="num"><strong>{{ r.pl | money }}</strong></td>
+        <td class="muted" style="font-size:12px">{{ r.source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="notice">Нет акций для прогноза в этом месяце.</div>
+  {% endif %}
+</div>
+{% endblock %}

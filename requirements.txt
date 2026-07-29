@@ -7,3 +7,9 @@ openai>=1.50.0
 python-dotenv==1.0.1
 pandas==2.2.3
 certifi
+openpyxl
+# Новая архитектура (pipeline_app, FastAPI + HTMX), порт 8503
+fastapi
+uvicorn
+jinja2
+python-multipart

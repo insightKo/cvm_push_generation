@@ -1,0 +1,10 @@
+<div class="grid cols-2">
+  <div><h3>Покупателей</h3><div class="kpi sm">{{ r.buyers | intf }}</div></div>
+  <div><h3>Доп ТО</h3><div class="kpi sm">{{ r.dop_to | money }}</div></div>
+  <div><h3>Стоимость (скидка)</h3><div class="kpi sm">{{ r.discount | money }}</div></div>
+  <div><h3>PL</h3><div class="kpi sm" style="color:{{ 'var(--green)' if r.pl >= 0 else '#c00' }}">{{ r.pl | money }}</div></div>
+</div>
+<p class="muted" style="font-size:12.5px;margin-top:10px">
+  PL/клиент: <strong>{{ r.pl_per_client }} ₽</strong>{% if r.roi %} · ROI (PL/стоимость): <strong>{{ r.roi }}×</strong>{% endif %}.
+  Формула: PL = Доп ТО × 0.30 − Скидка.
+</p>

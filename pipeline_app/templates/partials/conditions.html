@@ -1,0 +1,10 @@
+{% if error %}
+  <div class="notice err">{{ error }}</div>
+{% elif result %}
+  {% for k, v in result.items() %}
+    <div style="margin-bottom:10px">
+      <div class="muted" style="font-size:12px;text-transform:uppercase">{{ k }}</div>
+      <div style="white-space:pre-wrap">{{ v }}</div>
+    </div>
+  {% endfor %}
+{% endif %}

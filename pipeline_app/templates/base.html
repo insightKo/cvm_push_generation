@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CVM Pipeline{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">CVM <span class="dot">·</span> Pipeline</div>
+    {% for num, title, desc, key in STEPS %}
+      {% set phase = 'idea' if num in ['0','1','2','3'] else ('econ' if num in ['4','5','6'] else 'exec') %}
+      <a class="nav-step {% if key == active %}active{% endif %}" data-phase="{{ phase }}" href="/{{ key }}">
+        <span class="num {% if key == active %}on{% endif %}">{{ num }}</span>
+        <span><span class="t">{{ title }}</span><span class="d">{{ desc }}</span></span>
+      </a>
+    {% endfor %}
+  </aside>
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

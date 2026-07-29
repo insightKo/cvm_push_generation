@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Шаг 1 · Идея акции{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Шаг 1</div>
+  <h1>Идея акции</h1>
+  <p>Генерация акций-кандидатов: пробелы в покрытии сегментов, сезонные идеи месяца и лучшие исторические шаблоны.</p>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>Пробелы и идеи · {{ month or '—' }}</h2>
+    {% if ideas %}
+      <ul style="margin:0;padding-left:18px">
+        {% for i in ideas %}<li style="margin-bottom:8px">{{ i }}</li>{% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Покрытие сегментов в норме, явных пробелов не найдено.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Сезонные подсказки</h2>
+    {% if seasonal %}
+      <ul style="margin:0;padding-left:18px">
+        {% for cat, reason in seasonal %}
+          <li style="margin-bottom:8px"><strong>{{ cat }}</strong> — {{ reason }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Нет сезонных подсказок для месяца.</p>
+    {% endif %}
+    <h3 style="margin-top:16px">Покрытие сегментов</h3>
+    <div class="row">
+      {% for seg, n in coverage.items() %}
+        <span class="badge {{ 'green' if n > 0 else 'gray' }}">{{ seg }}: {{ n }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Топ исторических акций по PL/клиент <span class="muted" style="font-weight:400;font-size:13px">— шаблоны для копирования</span></h2>
+  {% if top_rows %}
+  <table>
+    <thead><tr><th>№</th><th>Название</th><th>Сегмент</th><th>Категория</th><th class="num">Клиенты</th><th class="num">PL, ₽</th><th class="num">PL/клиент</th></tr></thead>
+    <tbody>
+      {% for r in top_rows %}
+      <tr>
+        <td class="muted">{{ r['НОМЕР'] }}</td>
+        <td><strong>{{ r['Название'] }}</strong></td>
+        <td><span class="badge gray">{{ r['Сегмент'] }}</span></td>
+        <td>{{ r['Категория'] }}</td>
+        <td class="num">{{ r['Клиенты'] | intf }}</td>
+        <td class="num">{{ r['PL, ₽'] | money }}</td>
+        <td class="num"><strong>{{ r['PL/клиент, ₽'] }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">Нет исторических данных с заполненными PL.</p>
+  {% endif %}
+</div>
+{% endblock %}
