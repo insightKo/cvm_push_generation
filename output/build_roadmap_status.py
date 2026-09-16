@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Роадмэп и статус проекта внедрения ИИ в ДИКСИ на 02.09.2026 (PPTX).
+"""Роадмэп и статус проекта внедрения ИИ в ДИКСИ на 16.09.2026 (PPTX).
 Источник плана и трудоёмкости: data/Оценка_трудоёмкости_внедрение_ДИКСИ_06.08.2026 (1).xlsx
 (лист «Трудоёмкость (детально)» — помесячная раскладка задач; лист «Roadmap» — эффект).
 Стиль: bonnie-slide + mckinsey-deck, тело >=14pt, 10-11pt только в плотной диаграмме Ганта."""
@@ -24,6 +24,12 @@ GREENBG = RGBColor(0xEF, 0xF6, 0xF0)
 ORNGBG = RGBColor(0xFD, 0xF1, 0xE4)
 FONT   = "Arial"
 SW, SH = 13.333, 7.5
+
+import calendar
+import datetime as _dt
+STATUS = _dt.date(2026, 9, 16)
+STATUS_STR = STATUS.strftime("%d.%m.%Y")
+PILOT = (_dt.date(2026, 9, 20), _dt.date(2026, 9, 30))   # пилот планируется на 20–30 сентября (Елена, 16.09)
 
 # ── реальный перенос строк по метрикам Arial (а не по «примерно N символов»)
 from PIL import ImageFont as _IF
@@ -105,7 +111,7 @@ def header_block(s, kicker, title, page):
     txt(s, 0.74, 0.38, 12.1, 0.32, [[(kicker.upper(), 12.5, ORANGE, True)]])
     txt(s, 0.74, 0.66, 12.2, 0.72, [[(title, 21, INK, True)]])
     txt(s, 0.5, 7.04, 9.5, 0.32,
-        [[("Внедрение ИИ в CVM · ДИКСИ · статус на 02.09.2026", 10, GREY, False)]])
+        [[(f"Внедрение ИИ в CVM · ДИКСИ · статус на {STATUS_STR}", 10, GREY, False)]])
     txt(s, 12.0, 7.04, 0.85, 0.32, [[(str(page), 10, GREY, True)]], align=PP_ALIGN.RIGHT)
 
 
@@ -129,7 +135,17 @@ def legend(s, l, t):
 MONTHS = ["авг.26", "сент.26", "окт.26", "ноя.26", "дек.26", "янв.27", "фев.27", "мар.27"]
 
 
-def gantt(s, rows, gx, gy, gw, row_h, name_w, today_idx=1.9, milestone=None, name_sz=11.5):
+def date_idx(d):
+    """Позиция даты на оси MONTHS: индекс месяца (авг.26 = 0) + доля прошедших дней."""
+    m = (d.year - 2026) * 12 + d.month - 8
+    return m + (d.day - 1) / calendar.monthrange(d.year, d.month)[1]
+
+
+def today_idx():
+    return date_idx(STATUS)
+
+
+def gantt(s, rows, gx, gy, gw, row_h, name_w, milestone=None, name_sz=11.5):
     """rows: (label, sub, m_from, m_to, status) — m_from/m_to индексы месяцев (вкл.)."""
     cw = (gw - name_w) / len(MONTHS)
     # шапка месяцев
@@ -146,17 +162,15 @@ def gantt(s, rows, gx, gy, gw, row_h, name_w, today_idx=1.9, milestone=None, nam
         x = gx + name_w + i * cw
         ln = box(s, x, ty, 0.008, n * row_h, fill=BORD, line=None, rounded=False)
     # линия «сегодня»
-    tx = gx + name_w + today_idx * cw
+    tx = gx + name_w + today_idx() * cw
     box(s, tx, gy, 0.022, 0.34 + n * row_h, fill=ORANGE, line=None, rounded=False)
-    txt(s, tx - 0.72, gy - 0.28, 1.44, 0.26, [[("02.09 · 36 неделя", 10, ORANGE, True)]], align=PP_ALIGN.CENTER)
+    txt(s, tx - 0.72, gy - 0.28, 1.44, 0.26, [[(f"{STATUS:%d.%m} · {STATUS.isocalendar()[1]} неделя", 10, ORANGE, True)]], align=PP_ALIGN.CENTER)
     if milestone:
-        mi, mlabel = milestone
-        mx = gx + name_w + mi * cw
-        d = s.shapes.add_shape(MSO_SHAPE.DIAMOND, Inches(mx - 0.09), Inches(ty + n * row_h + 0.05),
-                               Inches(0.18), Inches(0.18))
-        d.fill.solid(); d.fill.fore_color.rgb = PURPLE; d.line.fill.background(); d.shadow.inherit = False
-        txt(s, mx + 0.14, ty + n * row_h + 0.02, 5.3, 0.26, [[(mlabel, 11, PURPLE, True)]])
-    # строки
+        ma, mb, mlabel = milestone          # веха-диапазон: индексы начала и конца на оси
+        mx, mx2 = gx + name_w + ma * cw, gx + name_w + mb * cw
+        box(s, mx, ty + n * row_h + 0.07, mx2 - mx, 0.15, fill=PURPLE, line=None, rounded=True)
+        txt(s, mx2 + 0.1, ty + n * row_h + 0.02, 4.0, 0.26, [[(mlabel, 11, PURPLE, True)]])
+    # строки; st может быть списком отрезков [(from, to, status), ...]
     for j, (label, sub, a, b, st) in enumerate(rows):
         y = ty + j * row_h
         if label.startswith("§"):   # заголовок этапа
@@ -167,11 +181,12 @@ def gantt(s, rows, gx, gy, gw, row_h, name_w, today_idx=1.9, milestone=None, nam
         if sub:
             runs[0].append(("  " + sub, name_sz - 1.5, GREY, False))
         txt(s, gx + 0.1, y, name_w - 0.16, row_h, runs, anchor=MSO_ANCHOR.MIDDLE, ls=0.95)
-        bx = gx + name_w + a * cw + 0.05
-        bw = (b - a + 1) * cw - 0.10
-        bar = box(s, bx, y + row_h * 0.22, bw, row_h * 0.56, fill=ST_COL[st], line=None, rounded=True)
-        txt(s, bx, y + row_h * 0.22, bw, row_h * 0.56, [[(ST_TXT[st], 9.5, WHITE, True)]],
-            align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+        for (a_, b_, st_) in (st if isinstance(st, list) else [(a, b, st)]):
+            bx = gx + name_w + a_ * cw + 0.05
+            bw = (b_ - a_ + 1) * cw - 0.10
+            box(s, bx, y + row_h * 0.22, bw, row_h * 0.56, fill=ST_COL[st_], line=None, rounded=True)
+            txt(s, bx, y + row_h * 0.22, bw, row_h * 0.56, [[(ST_TXT[st_], 9.5, WHITE, True)]],
+                align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
     frame = box(s, gx, gy, gw, 0.34 + n * row_h, fill=WHITE, line=BORD, rounded=False)
     frame.fill.background()
 
@@ -179,14 +194,14 @@ def gantt(s, rows, gx, gy, gw, row_h, name_w, today_idx=1.9, milestone=None, nam
 # ════════════════════════════ Слайд 1 — общий статус
 def build_overview(prs):
     s = add_slide(prs)
-    header_block(s, "Роадмэп · статус на 02.09.2026",
-                 "Этап 1 закрыт на 6 задач из 13: акции ДЦО на согласовании в КД, запуск коммуникаций — 37 неделя (07.09.–12.09.)", 1)
+    header_block(s, f"Роадмэп · статус на {STATUS_STR}",
+                 "Идёт подготовка пилота: оптимизирована работа со списками, выделены основные сегменты, готовятся первые коммуникации; пилот — 20–30 сентября", 1)
     # KPI-плашки
     tiles = [
         ("ЭТАП 1 · ДЦО", "6 из 13", "задач этапа закрыто", GREEN),
         ("СЕНТЯБРЬ · ДЦО", "+43 млн ₽", "доп. ТО, расчёт от 02.09\n(в плане было 27 млн ₽)", ORANGE),
-        ("СТАТУС АКЦИЙ", "На согласовании", "акции ДЦО высланы в КД", PURPLE),
-        ("ПЕРВЫЕ КОММУНИКАЦИИ", "37 неделя", "07.09.–12.09., старт пилота\nс контрольными группами", INK),
+        ("ПОДГОТОВКА ПИЛОТА", "В работе", "списки оптимизированы,\nосновные сегменты выделены", PURPLE),
+        ("ПИЛОТ", "20–30 сентября", "первые коммуникации\nпо сегментам готовятся", INK),
     ]
     tw, gap, tl, tt, th = 3.02, 0.22, 0.6, 1.42, 1.30
     for i, (k, big, sub, col) in enumerate(tiles):
@@ -203,7 +218,7 @@ def build_overview(prs):
     stages = [
         ("ЭТАП 1 · авг–окт 26", "Персонализация ДЦО", "670 ч", DONE,
          "Сервис, данные, MCI, КГ,\nдвижок текстов, контент ДЦО"),
-        ("ЭТАП 2 · ноя 26 – янв 27", "CVM: 100 сегментов", "1 202 ч", PLND,
+        ("ЭТАП 2 · ноя 26 – янв 27", "CVM: 100 сегментов", "1 202 ч", WIP,
          "100 сегментов, конвейер контента,\nинтерфейс, агенты, дашборды"),
         ("ЭТАП 3 · фев 27", "Масштаб 200 акций", "310 ч", PLND,
          "Оптимизатор, 200 акций,\nпередача сервиса"),
@@ -236,8 +251,8 @@ def build_overview(prs):
         box(s, lx, 5.34, 0.22, 0.14, fill=col, line=None, rounded=False)
         txt(s, lx + 0.28, 5.26, 0.75, 0.26, [[(lbl, 11.5, GREY, False)]])
         lx += 1.02
-    # сент/окт: ячейки CVM в файле пустые — показываем только ДЦО
-    eff = [("сент.26", 43, None), ("окт.26", 54, None), ("ноя.26", 54, 208),
+    # сент/окт: в файле оценки CVM не было; с 16.09 — +20 и +50 млн ₽ (ускорились по CVM)
+    eff = [("сент.26", 43, 20), ("окт.26", 54, 50), ("ноя.26", 54, 208),
            ("дек.26", 34, 208), ("янв.27", 54, 100), ("фев.27", 54, 150)]
     bx0, byb, bwd, maxh, mx = 0.85, 6.52, 0.80, 0.70, 262.0
     for i, (m, dts, cvm) in enumerate(eff):
@@ -246,34 +261,46 @@ def build_overview(prs):
         box(s, x, byb - hd, bwd, hd, fill=ORANGE, line=None, rounded=False)
         top = byb - hd
         if cvm:
-            # в стопке подписываем каждую часть внутри своего сегмента
-            txt(s, x, byb - hd, bwd, hd, [[(str(dts), 10, WHITE, True)]],
-                align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
             hc = maxh * cvm / mx
             box(s, x, top - hc, bwd, hc, fill=PURPLE, line=None, rounded=False)
-            txt(s, x, top - hc, bwd, hc, [[(str(cvm), 11, WHITE, True)]],
-                align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
-            top -= hc
+            if hc >= 0.14:
+                # в стопке подписываем каждую часть внутри своего сегмента
+                txt(s, x, byb - hd, bwd, hd, [[(str(dts), 10, WHITE, True)]],
+                    align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+                txt(s, x, top - hc, bwd, hc, [[(str(cvm), 11, WHITE, True)]],
+                    align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
+                top -= hc
+            else:
+                # низкий сегмент — разбивка цветом над столбиком
+                top -= hc
+                txt(s, x - 0.14, top - 0.23, bwd + 0.28, 0.22,
+                    [[(str(dts), 10.5, ORANGE, True), (" + ", 10.5, GREY, False), (str(cvm), 10.5, PURPLE, True)]],
+                    align=PP_ALIGN.CENTER)
+                top -= 0.20
         total = dts + (cvm or 0)
         txt(s, x - 0.14, top - 0.25, bwd + 0.28, 0.24,
             [[(str(total), 12, INK, True)]], align=PP_ALIGN.CENTER)
         txt(s, x - 0.14, byb + 0.03, bwd + 0.28, 0.24, [[(m, 10.5, GREY, False)]], align=PP_ALIGN.CENTER)
-    txt(s, 7.30, 5.62, 5.3, 1.05,
-        [[("ДЦО за период — 243 млн ₽,  CVM — 1 040 млн ₽", 13.5, INK, True)],
-         [("Совокупно за 6 месяцев ~1,28 млрд ₽", 13.5, INK, True)],
+    # итоги файла оценки (ДЦО 243, CVM 1 040) + CVM сентябрь 20 и октябрь 50
+    txt(s, 7.15, 5.36, 5.55, 1.45,
+        [[("ДЦО за период — 243 млн ₽,  CVM — 1 110 млн ₽", 13.5, INK, True)],
+         [("Совокупно за 6 месяцев ~1,35 млрд ₽", 13.5, INK, True)],
          [("Сентябрь по ДЦО пересчитан: 43 млн ₽ вместо 27 млн ₽ в плане", 12, ORANGE, False)],
-         [("CVM включается с этапа 2. В файле оценки за сент.–окт. значение CVM не проставлено.", 10.5, GREY, False)]], ls=1.1)
+         [("По пожеланиям клиента оптимизировали и ускорились по CVM", 12, PURPLE, True)],
+         [("CVM: +20 млн ₽ в сентябре, +50 млн ₽ в октябре", 12, PURPLE, False)]], ls=1.1)
 
 
-# ════════════════════════════ Слайд 2 — что сделано на 02.09
+# ════════════════════════════ Слайд 2 — что сделано на дату статуса
 def build_status(prs):
     s = add_slide(prs)
-    header_block(s, "Статус · 2 сентября 2026",
-                 "Сделано на 2 сентября: сервис, данные ДЦО, сегментация MCI, контрольные группы, контент акций", 2)
+    header_block(s, "Статус · 16 сентября 2026",
+                 "Сделано к 16 сентября — подготовка пилота: оптимизирована работа со списками, выделены основные сегменты для пилотного запуска", 2)
     col_w, gap, ty = 3.94, 0.22, 1.44
-    ch = 5.28
+    ch = 5.40
     cols = [
         ("СДЕЛАНО", GREEN, GREENBG, [
+            "Подготовка пилота: списки оптимизированы (2.8)",
+            "Подготовка пилота: выделены основные сегменты для запуска",
             "Сервис развёрнут: доступы, безопасность, бэкапы",
             "Подключены данные ДЦО: клиенты, покупки, текущие акции",
             "Встроен модуль сегментации MCI + интерфейс выбора сегментов",
@@ -285,14 +312,15 @@ def build_status(prs):
             "Акции ДЦО высланы на согласование в КД",
             "Движок персонализации текстов ДЦО под сегмент",
             "Агенты в обучении: копирайтер, редактор-гуманизатор",
-            "Первые коммуникации — 37 неделя (07.09.–12.09.)",
+            "Пилот: готовятся первые коммуникации по сегментам",
+            "По пожеланиям клиента ускорились по CVM: работы начаты",
             "База знаний: шаблоны, скиллы, гайдлайны, tone of voice",
             "Бизнес-процесс планирования и заведения ДЦО",
             "Отдельные среды под агентов, шифрование данных",
             "Пересчитан эффект сентября: +43 млн ₽ по ДЦО",
         ]),
         ("СЛЕДУЮЩИЕ ШАГИ", PURPLE, LGREY, [
-            "Запуск коммуникаций и замер vs контрольные группы",
+            "Пилот 20–30 сентября: запуск и замер vs контрольные группы",
             "Постэффекты пилота: отклик, доп. ТО, маржа по сегментам",
             "Приёмка этапа 1, старт этапа 2 — 100 сегментов с ноября",
             "Конвейер контента и интерфейс заведения акций",
@@ -311,14 +339,15 @@ def build_status(prs):
             h = 0.215 * n_lines
             box(s, x + 0.20, iy + 0.075, 0.12, 0.12, fill=col, line=None, rounded=False)
             txt(s, x + 0.44, iy - 0.03, tw, h + 0.1, [[(it, 14, INK, False)]], ls=1.02)
-            iy += h + 0.14
+            iy += h + 0.10
+        print(f"  слайд 2 · {title_}: конец колонки {iy:.2f} / дно карточки {ty + ch:.2f}")
 
 
 # ════════════════════════════ Слайд 3 — Гант этапа 1
 def build_gantt_stage1(prs):
     s = add_slide(prs)
     header_block(s, "Роадмэп · этап 1",
-                 "Персонализация ДЦО: данные, сегментация и контент готовы; движок персонализации, пилот и процесс — в работе", 3)
+                 "Персонализация ДЦО: данные, сегментация и контент готовы; идёт подготовка пилота, запуск — 20–30 сентября", 3)
     rows = [
         ("Развёртывание сервиса: доступы, безопасность, бэкапы", "1.1", 0, 1, DONE),
         ("Интеграция источников данных ДЦО", "1.2", 0, 1, DONE),
@@ -334,14 +363,15 @@ def build_gantt_stage1(prs):
         ("Безопасность: шифрование данных для агентов", "1.13", 1, 2, WIP),
         ("Управление этапом: статусы, демо, приёмка", "1.11", 0, 2, WIP),
     ]
-    gantt(s, rows, gx=0.6, gy=1.70, gw=12.14, row_h=0.33, name_w=5.55,
-          milestone=(1.55, "Первые персональные коммуникации — 37 неделя (07.09.–12.09.)"))
+    gantt(s, rows, gx=0.6, gy=1.70, gw=12.14, row_h=0.31, name_w=5.55,
+          milestone=(date_idx(PILOT[0]), date_idx(PILOT[1]), "Пилот — 20–30 сентября"))
     legend(s, 0.62, 1.34)
     txt(s, 5.6, 1.30, 7.2, 0.3,
         [[("Этап 1 · 13 задач: 6 закрыто, 7 в работе", 12.5, GREY, False)]],
         align=PP_ALIGN.RIGHT)
-    txt(s, 0.6, 6.72, 12.2, 0.3,
-        [[("Акции ДЦО по задаче 1.7 переданы на согласование в коммерческую дирекцию; пилот 1.10 стартует после согласования.", 12.5, GREY, False)]])
+    txt(s, 0.6, 6.42, 12.2, 0.56,
+        [[("Подготовка пилота: списки оптимизированы (задача 2.8), выделены основные сегменты, готовятся первые коммуникации по сегментам.", 12.5, GREY, False)],
+         [("Акции ДЦО по задаче 1.7 переданы на согласование в коммерческую дирекцию; пилот 1.10 стартует после согласования.", 12.5, GREY, False)]])
 
 
 # ════════════════════════════ Слайд 4 — Гант этапов 2–4
@@ -357,7 +387,9 @@ def build_gantt_next(prs):
         ("Деплинки, SKU и механики в конвейере", "2.4", 3, 5, PLND),
         ("Агенты: конструктор, оператор, дизайнер, оптимизатор", "2.5 · 2.13 · 2.15–2.16", 3, 5, PLND),
         ("Дашборд эффективности и постэффекты сегментных акций", "2.6 · 2.14", 3, 5, PLND),
-        ("Методология 100 сегментов, процесс, обучение команды заказчика", "2.8–2.12", 3, 5, PLND),
+        ("Операционная часть заведения акций: настройка, расписание, QA", "2.8", 0, 0,
+         [(1, 1, WIP), (3, 5, PLND)]),
+        ("Методология 100 сегментов, процесс, обучение команды заказчика", "2.9–2.12", 3, 5, PLND),
         ("§ЭТАП 3 · февраль 2027 · Масштаб + простая оптимизация · 310 ч", "", 0, 0, PLND),
         ("200 акций через конвейер + автоподбор оффера и сегмента", "3.2 · 3.3", 6, 6, PLND),
         ("Стабилизация интерфейса, отчёт по эффекту, передача сервиса", "3.1 · 3.4–3.6", 6, 6, PLND),
@@ -376,7 +408,7 @@ def main():
     build_status(prs)
     build_gantt_stage1(prs)
     build_gantt_next(prs)
-    out = "output/Роадмэп_статус_внедрение_ИИ_ДИКСИ_02.09.2026.pptx"
+    out = f"output/Роадмэп_статус_внедрение_ИИ_ДИКСИ_{STATUS_STR}.pptx"
     prs.save(out)
     print("saved:", out)
 
