@@ -15,13 +15,13 @@ from fastapi.staticfiles import StaticFiles
 from pipeline_app import settings
 from pipeline_app.core import datasource
 from pipeline_app.routers import (
-    step0, step1, step2, step3, step4, step5, step6, step7, step8, step9,
+    step0, step1, step2, step3, step4, step5, step6, step7, step8, step9, plan,
 )
 
 app = FastAPI(title="CVM Pipeline")
 app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")), name="static")
 
-for r in (step0, step1, step2, step3, step4, step5, step6, step7, step8, step9):
+for r in (step0, step1, step2, step3, step4, step5, step6, step7, step8, step9, plan):
     app.include_router(r.router)
 
 

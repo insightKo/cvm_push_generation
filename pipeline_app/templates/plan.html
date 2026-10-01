@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}План · {{ plan.month }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker">Заготовка</div>
+  <h1>Расписание · {{ plan.month }}</h1>
+  <p>{{ plan.status }}</p>
+  {% if months|length > 1 %}<p>{% for mm in months %}<a class="btn" href="/plan?m={{ mm.key }}" style="margin-right:6px;{% if mm.key == cur %}font-weight:700;text-decoration:underline;{% endif %}">{{ mm.month }}</a>{% endfor %}</p>{% endif %}
+  {% if show_pushes %}<p><a class="btn" href="/plan/pushes">Варианты пушей на неделю 36 →</a></p>{% endif %}
+</div>
+
+<div class="card" style="display:flex; gap:32px">
+  <div><div class="muted">Акций</div><div style="font-size:26px;font-weight:700">{{ total }}</div></div>
+  <div><div class="muted">С push</div><div style="font-size:26px;font-weight:700">{{ with_push }}</div></div>
+  <div><div class="muted">Сообщений</div><div style="font-size:26px;font-weight:700">{{ total_msgs }}</div></div>
+  {% if has_forecast %}
+  <div><div class="muted">Доп ТО (план), ₽</div><div style="font-size:26px;font-weight:700">{{ sum_dop_to }}</div></div>
+  <div><div class="muted">PL (план), ₽</div><div style="font-size:26px;font-weight:700">{{ sum_pl }}</div></div>
+  {% endif %}
+</div>
+
+<div class="card">
+<div style="overflow-x:auto;">
+<table style="border-collapse:collapse; font-size:10px; width:100%;">
+  <tr>
+    <th style="padding:2px 4px; border:1px solid #ddd; position:sticky; left:0; background:#f8f9fa; z-index:2; min-width:180px;">Акция</th>
+    <th style="padding:2px 4px; border:1px solid #ddd; background:#f8f9fa; min-width:120px;">Сегмент</th>
+    <th style="padding:2px 4px; border:1px solid #ddd; background:#f8f9fa; min-width:40px;">Канал</th>
+    {% for d in days %}<th style="padding:1px 2px; border:{{ '2px solid #ffc107' if d.we else '1px solid #ddd' }}; background:{{ '#fff3cd' if d.we else '#f8f9fa' }}; text-align:center; min-width:18px;">{{ d.d }}</th>{% endfor %}
+  </tr>
+  <tr>
+    <td style="border:1px solid #ddd; background:#f8f9fa; position:sticky; left:0; z-index:2;"></td>
+    <td style="border:1px solid #ddd; background:#f8f9fa;"></td>
+    <td style="border:1px solid #ddd; background:#f8f9fa;"></td>
+    {% for d in days %}<td style="padding:1px 2px; border:{{ '2px solid #ffc107' if d.we else '1px solid #ddd' }}; background:{{ '#fff3cd' if d.we else '#f8f9fa' }}; text-align:center; color:#888;">{{ d.dow }}</td>{% endfor %}
+  </tr>
+    {% for g in rows %}
+    {% if loop.first %}<tr><td colspan="{{ 3 + days|length }}" style="padding:6px 8px; border:1px solid #ddd; background:#e8eaf6; font-weight:bold;">Серии месяца</td></tr>{% endif %}
+    {% if not loop.first and (g.channel == 'slip' or g.mech == 'Коммуникация') != (rows[loop.index0-1].channel == 'slip' or rows[loop.index0-1].mech == 'Коммуникация') %}<tr><td colspan="{{ 3 + days|length }}" style="padding:6px 8px; border:1px solid #ddd; background:#e8eaf6; font-weight:bold;">Акции по датам</td></tr>{% endif %}
+    <tr>
+      <td style="padding:3px 6px; border:1px solid #ddd; background:#fff9c4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;{% if g.is_parent %} font-weight:700; cursor:pointer;{% endif %}" title="{{ g.mech }} · {{ g.cat }} · {{ g.why }}"{% if g.is_parent %} onclick="toggleStream({{ g.num }})"{% endif %}>{% if g.is_parent %}<span id="tg-{{ g.num }}">▸</span> {% endif %}{% if g.num %}<span class="muted">{{ g.num }}</span> {% endif %}{{ g.name }}</td>
+      <td style="padding:3px 6px; border:1px solid #ddd; background:#fff9c4; font-size:10px; white-space:nowrap;">{{ g.segment }}</td>
+      <td style="padding:3px 6px; border:1px solid #ddd; background:#fff9c4; font-size:11px;">{{ g.channel }}</td>
+      {% for c in g.cells %}
+        {% set b = '2px solid #ffc107' if c.we else '1px solid #ddd' %}
+        {% if c.msg %}<td style="padding:1px; border:{{ b }}; background:#bbdefb; text-align:center; font-weight:bold; color:#1565c0;" title="Push {{ c.msg }}">{{ c.msg }}</td>
+        {% elif c.in %}<td style="padding:1px; border:{{ b }}; background:#fff9c4;"></td>
+        {% else %}<td style="padding:1px; border:{{ b }};"></td>{% endif %}
+      {% endfor %}
+    </tr>
+    {% if g.is_parent %}{% for k in g.children %}
+    <tr class="ch-{{ g.num }}" style="display:none">
+      <td style="padding:3px 6px 3px 22px; border:1px solid #ddd; background:#fffde7; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;" title="{{ k.cat }} · {{ k.why }}"><span class="muted">{{ k.num }}</span> {{ k.name }}</td>
+      <td style="padding:3px 6px; border:1px solid #ddd; background:#fffde7; font-size:10px; white-space:nowrap;" class="muted">{{ k.cat }}</td>
+      <td style="padding:3px 6px; border:1px solid #ddd; background:#fffde7; font-size:11px;"></td>
+      {% for c in k.cells %}
+        {% set b = '2px solid #ffc107' if c.we else '1px solid #ddd' %}
+        {% if c.in %}<td style="padding:1px; border:{{ b }}; background:{{ '#ffe082' if c.msg else '#fff9c4' }};"></td>
+        {% else %}<td style="padding:1px; border:{{ b }};"></td>{% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}{% endif %}
+    {% endfor %}
+</table>
+</div>
+<div style="margin-top:12px; font-size:12px;">
+  <span style="display:inline-block; width:16px; height:16px; background:#fff9c4; border:1px solid #aaa; vertical-align:middle; border-radius:3px;"></span> Заготовка (условия на обсуждении)&nbsp;&nbsp;
+  <span style="display:inline-block; width:16px; height:16px; background:#bbdefb; border:1px solid #aaa; vertical-align:middle; border-radius:3px;"></span> PUSH (с номерами сообщений)&nbsp;&nbsp;
+  <span style="display:inline-block; width:16px; height:16px; background:#fff3cd; border:2px solid #ffc107; vertical-align:middle; border-radius:3px;"></span> выходные
+</div>
+<p class="muted" style="margin-top:8px">Наведи на название акции — механика, категория и обоснование.</p>
+</div>
+
+<div class="card">
+  <h2>Детали</h2>
+  <table>
+    <thead><tr><th>Акция</th><th>Сегмент</th><th>Период</th><th>Канал</th><th>Механика</th><th>Категория</th>{% if has_forecast %}<th style="text-align:right">Доп ТО, ₽</th><th style="text-align:right">PL, ₽</th>{% endif %}<th>Почему</th></tr></thead>
+    <tbody>{% for p in rows %}
+      <tr{% if p.is_parent %} style="cursor:pointer" onclick="toggleStream({{ p.num }})"{% endif %}><td><strong>{% if p.is_parent %}<span id="dtg-{{ p.num }}">▸</span> {% endif %}{{ p.name }}</strong> <span class="muted">{% if p.num %}№{{ p.num }}{% endif %}</span></td><td><span class="badge gray">{{ p.segment }}</span></td><td style="white-space:nowrap">{{ p.start[8:] }}.{{ p.start[5:7] }}–{{ p.end[8:] }}.{{ p.end[5:7] }}</td><td>{{ p.channel }}</td><td>{{ p.mech }}</td><td>{{ p.cat }}</td>{% if has_forecast %}<td style="text-align:right;white-space:nowrap">{{ p.dop_to_fmt }}</td><td style="text-align:right;white-space:nowrap">{{ p.pl_fmt }}</td>{% endif %}<td class="muted">{{ p.why }}</td></tr>
+      {% if p.is_parent %}{% for k in p.children %}
+      <tr class="ch-{{ p.num }}" style="display:none"><td style="padding-left:22px">{{ k.name }} <span class="muted">№{{ k.num }}</span></td><td class="muted">та же выборка {{ p.num }}</td><td style="white-space:nowrap">{{ k.start[8:] }}.{{ k.start[5:7] }}–{{ k.end[8:] }}.{{ k.end[5:7] }}</td><td>{{ k.channel }}</td><td>{{ k.mech }}</td><td>{{ k.cat }}</td>{% if has_forecast %}<td style="text-align:right;white-space:nowrap">{{ k.dop_to_fmt }}</td><td style="text-align:right;white-space:nowrap">{{ k.pl_fmt }}</td>{% endif %}<td class="muted">{{ k.why }}</td></tr>
+      {% endfor %}{% endif %}
+    {% endfor %}</tbody>
+  </table>
+</div>
+
+<script>
+function toggleStream(n) {
+  var rows = document.querySelectorAll('.ch-' + n), open = false;
+  rows.forEach(function (r) { var hidden = r.style.display === 'none'; r.style.display = hidden ? '' : 'none'; open = hidden; });
+  ['tg-', 'dtg-'].forEach(function (p) { var t = document.getElementById(p + n); if (t) t.textContent = open ? '▾' : '▸'; });
+}
+</script>
+
+<div class="card">
+  <h2>На обсуждение</h2>
+  <ol>{% for q in plan.questions %}<li>{{ q }}</li>{% endfor %}</ol>
+</div>
+{% endblock %}

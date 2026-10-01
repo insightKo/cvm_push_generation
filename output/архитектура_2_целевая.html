@@ -1,0 +1,246 @@
+<meta charset="utf-8">
+<title>Целевая архитектура CVM + ДЦО</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color:#1f2937; background:#ffffff; margin: 14px 18px; }
+  h1 { font-size: 24px; margin: 4px 0 10px; }
+  svg { width:100%; height:auto; display:block; }
+  .foot { color:#6b7280; font-size: 12.5px; margin-top: 8px; }
+  @page { size: A4 landscape; margin: 7mm; }
+  @media print {
+    body { margin: 0; }
+    h1 { font-size: 17px; margin: 0 0 3px; }
+    .foot { font-size: 9.5px; margin-top: 2px; }
+    svg { height: 172mm; width: auto; max-width: 100%; margin: 0 auto; }
+  }
+  svg text { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; fill:#1f2937; }
+  .zone   { fill:none; stroke:#9ca3af; stroke-width:1.8; stroke-dasharray:8 6; }
+  .zlabel { font-size:16px; font-weight:700; fill:#6b7280; }
+  .t  { font-size:16px; font-weight:700; }
+  .s  { font-size:13px; fill:#374151; }
+  .fl { font-size:13.5px; font-weight:700; fill:#1f2937; }
+  .b-blue   { fill:#eff6ff; stroke:#2563eb; stroke-width:1.8; }
+  .b-green  { fill:#ecfdf5; stroke:#059669; stroke-width:1.8; }
+  .b-amber  { fill:#fffbeb; stroke:#d97706; stroke-width:1.8; }
+  .b-violet { fill:#eef2ff; stroke:#4f46e5; stroke-width:1.8; }
+  .b-gray   { fill:#f9fafb; stroke:#6b7280; stroke-width:1.6; }
+  .b-dash   { fill:#fafafa; stroke:#9ca3af; stroke-width:1.8; stroke-dasharray:7 6; }
+  .lb { fill:#ffffff; stroke:#e5e7eb; stroke-width:1; rx:4; }
+  .ar  { stroke:#6b7280; stroke-width:2.4; fill:none; marker-end:url(#m2); }
+  .ard { stroke:#9ca3af; stroke-width:2.4; fill:none; stroke-dasharray:7 6; marker-end:url(#m2d); }
+</style>
+
+<h1>Целевая архитектура CVM + ДЦО · ДИКСИ · Manzana · MCI · август 2026</h1>
+
+<svg viewBox="0 0 1600 1090" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="m2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#6b7280"/></marker>
+    <marker id="m2d" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L8,4.5 L0,9 z" fill="#9ca3af"/></marker>
+  </defs>
+
+  <!-- ===== Клиент ДИКСИ ===== -->
+  <rect class="zone" x="20" y="60" width="250" height="920" rx="16"/>
+  <text class="zlabel" x="38" y="88">Клиент ДИКСИ</text>
+
+  <rect class="b-amber" x="40" y="106" width="210" height="82" rx="12"/>
+  <text class="t" x="145" y="140" text-anchor="middle">Согласующий</text>
+  <text class="s" x="145" y="162" text-anchor="middle">работает в портале</text>
+
+  <rect class="b-amber" x="40" y="262" width="210" height="72" rx="12"/>
+  <text class="t" x="145" y="292" text-anchor="middle">Данные ДИКСИ</text>
+  <text class="s" x="145" y="314" text-anchor="middle">чего нет в CDP</text>
+
+  <rect class="b-amber" x="40" y="382" width="210" height="88" rx="12"/>
+  <text class="t" x="145" y="414" text-anchor="middle">Брендбук и шаблоны</text>
+  <text class="s" x="145" y="436" text-anchor="middle">референсы,</text>
+  <text class="s" x="145" y="454" text-anchor="middle">шаблоны контента</text>
+
+  <rect class="b-amber" x="40" y="522" width="210" height="72" rx="12"/>
+  <text class="t" x="145" y="552" text-anchor="middle">Контакт-центр</text>
+  <text class="s" x="145" y="574" text-anchor="middle">памятки об акциях</text>
+
+  <rect class="b-amber" x="40" y="646" width="210" height="82" rx="12"/>
+  <text class="t" x="145" y="680" text-anchor="middle">Приложение</text>
+  <text class="s" x="145" y="702" text-anchor="middle">PUSH · купоны · подборки</text>
+
+  <rect class="b-amber" x="40" y="856" width="210" height="76" rx="12"/>
+  <text class="t" x="145" y="888" text-anchor="middle">Касса</text>
+  <text class="s" x="145" y="910" text-anchor="middle">механики · slip</text>
+
+  <!-- ===== Российский сервер ===== -->
+  <rect class="zone" x="300" y="60" width="580" height="620" rx="16"/>
+  <text class="zlabel" x="318" y="88">РОССИЙСКИЙ СЕРВЕР — фронтенд · данные · исполнение</text>
+
+  <rect class="b-violet" x="320" y="104" width="540" height="96" rx="12"/>
+  <text class="t" x="590" y="136" text-anchor="middle">Портал для пользователей ДИКСИ</text>
+  <text class="s" x="590" y="158" text-anchor="middle">сетка акций · тексты · прогнозы</text>
+  <text class="s" x="590" y="178" text-anchor="middle">статусы согласования · версии</text>
+
+  <rect class="b-blue" x="320" y="228" width="258" height="86" rx="12"/>
+  <text class="t" x="449" y="252" text-anchor="middle">База знаний ДИКСИ</text>
+  <text class="s" x="449" y="274" text-anchor="middle">ассортимент · механики · ссылки</text>
+  <text class="s" x="449" y="292" text-anchor="middle">брендбук · шаблоны · категории месяца</text>
+
+  <rect class="b-gray" x="602" y="228" width="258" height="86" rx="12"/>
+  <text class="t" x="731" y="256" text-anchor="middle">Postgres + хранилище</text>
+  <text class="s" x="731" y="278" text-anchor="middle">статусы · логи · секреты</text>
+  <text class="s" x="731" y="296" text-anchor="middle">брендбук и шаблоны</text>
+
+  <rect class="b-blue" x="320" y="342" width="540" height="104" rx="12"/>
+  <text class="t" x="590" y="372" text-anchor="middle">API для работы с MCI — исполнение</text>
+  <text class="s" x="590" y="394" text-anchor="middle">выборки · списки и правила заведения в Online и Campaign</text>
+  <text class="s" x="590" y="414" text-anchor="middle">автосверки · контролёр полноты · тест акции</text>
+
+  <rect class="b-gray" x="320" y="474" width="258" height="80" rx="12"/>
+  <text class="t" x="449" y="500" text-anchor="middle">Отчёты и API</text>
+  <text class="s" x="449" y="522" text-anchor="middle">выгрузки · интеграции</text>
+  <text class="s" x="449" y="540" text-anchor="middle">мониторинг · алерты</text>
+
+  <rect class="b-blue" x="602" y="474" width="258" height="80" rx="12"/>
+  <text class="t" x="731" y="500" text-anchor="middle">Агент контакт-центра</text>
+  <text class="s" x="731" y="522" text-anchor="middle">памятки по акциям</text>
+  <text class="s" x="731" y="540" text-anchor="middle">поддержка операторов КЦ</text>
+
+  <rect class="b-blue" x="320" y="582" width="258" height="76" rx="12"/>
+  <text class="t" x="449" y="606" text-anchor="middle">Qwen — локальная LLM</text>
+  <text class="s" x="449" y="628" text-anchor="middle">чат-поддержка пользователей</text>
+  <text class="s" x="449" y="646" text-anchor="middle">ДИКСИ · наружу не ходит</text>
+
+  <rect class="b-blue" x="602" y="582" width="258" height="76" rx="12"/>
+  <text class="t" x="731" y="606" text-anchor="middle">ML-модели</text>
+  <text class="s" x="731" y="628" text-anchor="middle">прогноз · отклик</text>
+  <text class="s" x="731" y="646" text-anchor="middle">эластичность · оптимизация</text>
+
+  <!-- ===== Казахский сервер ===== -->
+  <rect class="zone" x="960" y="60" width="620" height="440" rx="16"/>
+  <text class="zlabel" x="978" y="88">КАЗАХСКИЙ СЕРВЕР — агенты + LLM</text>
+
+  <rect class="b-blue" x="980" y="104" width="580" height="212" rx="12"/>
+  <text class="t" x="1270" y="136" text-anchor="middle">Оркестратор + агентная ферма</text>
+  <text class="s" x="1270" y="170" text-anchor="middle">контент: планировщик сетки · генератор пушей · купонов · серий</text>
+  <text class="s" x="1270" y="190" text-anchor="middle">подборщик SKU · валидатор текстов · выпускающий редактор</text>
+  <text class="s" x="1270" y="210" text-anchor="middle">аналитика (логика): сегменты · прогноз · рекмодель · пост-анализ · тест акции</text>
+  <text class="s" x="1270" y="236" text-anchor="middle">работают на брифах — без клиентских данных и денег</text>
+  <text class="s" x="1270" y="256" text-anchor="middle">брендбук и шаблоны приходят с русского сервера</text>
+
+  <rect class="b-gray" x="980" y="344" width="580" height="70" rx="12"/>
+  <text class="t" x="1270" y="374" text-anchor="middle">Стенд агентов</text>
+  <text class="s" x="1270" y="396" text-anchor="middle">проверка агентов на примерах</text>
+
+
+  <!-- ===== Внешние модели ===== -->
+  <rect class="b-blue" x="980" y="586" width="280" height="90" rx="12"/>
+  <text class="t" x="1120" y="622" text-anchor="middle">Gemini API</text>
+  <text class="s" x="1120" y="646" text-anchor="middle">генерация текстов и картинок</text>
+
+
+  <!-- ===== Перспектива ===== -->
+  <rect class="b-blue" x="980" y="726" width="580" height="86" rx="12"/>
+  <text class="t" x="1270" y="760" text-anchor="middle">Firebase / FCM (Google)</text>
+  <text class="s" x="1270" y="784" text-anchor="middle">прямой канал пушей по ДЦО в приложение</text>
+
+  <!-- ===== Manzana ===== -->
+  <rect class="zone" x="300" y="770" width="580" height="240" rx="16"/>
+  <text class="zlabel" x="318" y="798">Manzana (заявки через helpdesk.manzanagroup.ru)</text>
+
+  <rect class="b-green" x="320" y="816" width="170" height="140" rx="12"/>
+  <text class="t" x="405" y="850" text-anchor="middle">MCI (MS SQL)</text>
+  <text class="s" x="405" y="874" text-anchor="middle">mci_model</text>
+  <text class="s" x="405" y="894" text-anchor="middle">выборки · аналитика</text>
+
+  <rect class="b-green" x="510" y="816" width="180" height="140" rx="12"/>
+  <text class="t" x="600" y="850" text-anchor="middle">Manzana Online</text>
+  <text class="s" x="600" y="874" text-anchor="middle">акции · купоны · slip</text>
+  <text class="s" x="600" y="894" text-anchor="middle">расчёт механики</text>
+
+  <rect class="b-green" x="710" y="816" width="170" height="140" rx="12"/>
+  <text class="t" x="795" y="850" text-anchor="middle">Campaign</text>
+  <text class="s" x="795" y="874" text-anchor="middle">PUSH · e-mail · SMS</text>
+
+  
+
+  <!-- ============ ПОТОКИ ============ -->
+
+  <!-- клиент ↔ портал -->
+  <path class="ar" d="M250,136 L320,136"/>
+  <path class="ar" d="M320,162 L250,162"/>
+  <rect class="lb" x="196" y="182" width="180" height="24"/>
+  <text class="fl" x="286" y="199" text-anchor="middle">планы · тексты · статусы</text>
+
+  <!-- данные ДИКСИ → база дозаливки -->
+  <path class="ar" d="M250,290 L320,278"/>
+  <rect class="lb" x="212" y="230" width="148" height="24"/>
+  <text class="fl" x="286" y="247" text-anchor="middle">дозаливка данных</text>
+
+  <!-- брендбук → RU -->
+  <path class="ar" d="M250,420 L320,340"/>
+  <rect class="lb" x="200" y="352" width="172" height="24"/>
+  <text class="fl" x="286" y="369" text-anchor="middle">брендбук · шаблоны</text>
+
+  <!-- RU → КЦ -->
+  <path class="ar" d="M320,558 L250,558"/>
+  <rect class="lb" x="200" y="530" width="172" height="24"/>
+  <text class="fl" x="286" y="547" text-anchor="middle">памятка по акциям</text>
+
+  <!-- RU ↔ KZ -->
+  <path class="ar" d="M880,120 L960,120"/>
+  <rect class="lb" x="742" y="134" width="356" height="24"/>
+  <text class="fl" x="920" y="151" text-anchor="middle">задание: брифы · шаблоны · брендбук</text>
+  <path class="ar" d="M960,196 L880,196"/>
+  <rect class="lb" x="660" y="212" width="380" height="24"/>
+  <text class="fl" x="850" y="229" text-anchor="middle">готовый контент: тексты пушей · купоны · планы</text>
+
+  <!-- KZ ↔ Gemini -->
+  <path class="ar" d="M1080,500 L1080,586"/>
+  <path class="ar" d="M1160,586 L1160,500"/>
+  <rect class="lb" x="964" y="530" width="132" height="24"/>
+  <text class="fl" x="1030" y="547" text-anchor="middle">↓ промпты</text>
+  <rect class="lb" x="1096" y="556" width="310" height="24"/>
+  <text class="fl" x="1251" y="573" text-anchor="middle">↑ тексты пушей · купоны · картинки</text>
+
+
+  <!-- RU ↔ MCI -->
+  <path class="ar" d="M385,680 L385,816"/>
+  <path class="ar" d="M430,816 L430,680"/>
+  <rect class="lb" x="308" y="692" width="128" height="24"/>
+  <text class="fl" x="372" y="709" text-anchor="middle">SQL-запросы ↓</text>
+  <rect class="lb" x="308" y="712" width="180" height="24"/>
+  <text class="fl" x="398" y="729" text-anchor="middle">↑ списки CRM_GUID</text>
+
+  <!-- RU → Online -->
+  <path class="ar" d="M600,680 L600,816"/>
+  <rect class="lb" x="500" y="694" width="200" height="24"/>
+  <text class="fl" x="600" y="711" text-anchor="middle">условия акций · купоны · slip</text>
+
+  <!-- RU → Campaign -->
+  <path class="ar" d="M795,680 L795,816"/>
+  <rect class="lb" x="700" y="694" width="190" height="24"/>
+  <text class="fl" x="795" y="711" text-anchor="middle">пуши · списки · настройки</text>
+
+  <!-- Campaign → приложение (PUSH) -->
+  <path class="ar" d="M795,956 L795,974 L282,974 L282,688 L250,688"/>
+  <rect class="lb" x="500" y="960" width="80" height="24"/>
+  <text class="fl" x="540" y="977" text-anchor="middle">PUSH</text>
+
+  <!-- Online → приложение (купоны) -->
+  <path class="ar" d="M560,956 L560,992 L270,992 L270,712 L250,712"/>
+  <rect class="lb" x="380" y="980" width="100" height="24"/>
+  <text class="fl" x="430" y="997" text-anchor="middle">купоны</text>
+
+  <!-- Online → касса (механика + slip) -->
+  <path class="ar" d="M640,956 L640,1020 L258,1020 L258,894 L250,894"/>
+  <rect class="lb" x="330" y="1008" width="210" height="24"/>
+  <text class="fl" x="435" y="1025" text-anchor="middle">механика · slip в чеке</text>
+
+  <!-- RU -> FCM -->
+  <path class="ar" d="M880,640 L920,640 L920,760 L980,760"/>
+  <rect class="lb" x="845" y="722" width="150" height="24"/>
+  <text class="fl" x="920" y="739" text-anchor="middle">пуши по ДЦО</text>
+
+  <!-- FCM -> приложение -->
+  <path class="ar" d="M1270,812 L1270,1044 L246,1044 L246,672 L250,672"/>
+  <rect class="lb" x="680" y="1032" width="180" height="24"/>
+  <text class="fl" x="770" y="1049" text-anchor="middle">PUSH в приложение</text>
+  <text class="fl" x="590" y="1072" text-anchor="middle">обратная связь: факты отправок и чеков → CDP (каждую минуту) → MCI (заливка каждую ночь)</text>
+</svg>
+
+<div class="foot">Гейт в коде: заведение и отправка — только из статуса «согласовано». Клиентские данные (CRM_GUID, чеки, токены) живут только в Manzana/MCI и на российском сервере. На казахский сервер и во внешние модели уходят только обезличенные брифы, правила, шаблоны и брендбук — без денег, объёмов, клиентских данных и статусов согласования. Каждый внешний запрос — в журнал.</div>

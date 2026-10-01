@@ -8,3 +8,4 @@ venv/
 *.bak
 data/
 cache/
+.DS_Store

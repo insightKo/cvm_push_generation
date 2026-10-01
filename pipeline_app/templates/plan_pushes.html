@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Пуши · неделя {{ data.week }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div class="kicker"><a href="/plan">← План сентября</a></div>
+  <h1>Варианты пушей · неделя {{ data.week }}</h1>
+  <p>{{ data.note }}</p>
+</div>
+{% for p in data.pushes %}
+<div class="card">
+  <h2>{{ p.date }} · msg {{ p.msg }} · <span class="muted">№{{ p.num }}</span> {{ p.promo }}</h2>
+  <p class="muted">Сегмент: <span class="badge gray">{{ p.segment }}</span> &nbsp; Экран: <code>{{ p.screen }}</code> &nbsp; Кнопка: {{ p.button }}</p>
+  <table>
+    <thead><tr><th style="width:40px">#</th><th style="width:260px">Заголовок</th><th>Текст</th><th style="width:70px">знаков</th></tr></thead>
+    <tbody>
+    {% for v in p.variants %}
+      <tr><td>{{ loop.index }}</td><td><strong>{{ v.title }}</strong> <span class="muted">({{ v.title|length }})</span></td><td>{{ v.body }}</td><td class="muted">{{ v.body|length }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% set c = cond.get(p.num|string) %}
+  {% if c %}
+  <details style="margin-top:8px"><summary class="muted">Условия (как записано в CVM offline)</summary>
+    <table style="margin-top:6px"><tbody>
+    {% for k, v in c.items() %}<tr><td class="muted" style="width:260px">{{ k }}</td><td style="white-space:pre-wrap">{{ v }}</td></tr>{% endfor %}
+    </tbody></table>
+  </details>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ДИКСИ | Динамика клиентских сегментов</title>
+    <link rel="icon" type="image/png" href="favicon-mci.png">
+    <script src="./vendor/chart.umd.min.js"></script>
+    <script src="./vendor/chartjs-plugin-datalabels.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=220">
+</head>
+<body>
+    <!-- User header bar -->
+    <div class="user-bar" id="user-bar">
+        <div class="user-bar-info">
+            <span class="user-bar-name" id="user-bar-name"></span>
+        </div>
+        <button class="user-bar-logout" onclick="logout()">Выйти</button>
+    </div>
+
+    <nav class="sidebar">
+        <div class="logo">
+            <img src="logo-dixy.svg" alt="ДИКСИ" class="logo-img">
+        </div>
+        <div class="nav-section">
+            <div class="nav-label">Отчёт</div>
+            <a href="#" class="nav-item" data-tab="report">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Общий отчёт
+            </a>
+            <a href="#" class="nav-item" data-tab="clientbase">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                База клиентов
+            </a>
+            <a href="#" class="nav-item" data-tab="dynamics">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Динамика базы
+            </a>
+            <a href="#" class="nav-item" data-tab="cvm">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                CVM
+            </a>
+            <a href="#" class="nav-item" data-tab="gcg">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-4"/></svg>
+                ГКГ
+            </a>
+            <a href="#" class="nav-item" data-tab="trends">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                Тренды категорий
+            </a>
+            <a href="#" class="nav-item" data-tab="price_seg">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Ценовые сегменты
+            </a>
+            <a href="#" class="nav-item" data-tab="check_seg">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                Сегменты по чеку
+            </a>
+            <a href="#" class="nav-item" data-tab="missions">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                Миссии
+            </a>
+            <a href="#" class="nav-item" data-tab="coffee">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                Готовый кофе
+            </a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-label">Отчёт по сегментам</div>
+            <a href="#" class="nav-item active" data-tab="summary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Сводный анализ
+            </a>
+            <a href="#" class="nav-item" data-tab="active_lfl">
+                <span class="nav-dot" style="background:#003A70"></span>
+                Активные LFL
+            </a>
+            <a href="#" class="nav-item" data-tab="active">
+                <span class="nav-dot" style="background:#E87722"></span>
+                Активные
+            </a>
+            <a href="#" class="nav-item" data-tab="churn">
+                <span class="nav-dot" style="background:#C41E3A"></span>
+                Отток
+            </a>
+            <a href="#" class="nav-item" data-tab="random">
+                <span class="nav-dot" style="background:#9B59B6"></span>
+                Случайные
+            </a>
+            <a href="#" class="nav-item" data-tab="new">
+                <span class="nav-dot" style="background:#2E8B57"></span>
+                Новые
+            </a>
+        </div>
+        <div class="nav-section">
+            <div class="nav-label">Аналитика</div>
+            <a href="#" class="nav-item" data-tab="definitions">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                Определения
+            </a>
+            <a href="#" class="nav-item" data-tab="insights">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                Выводы
+            </a>
+        </div>
+        <div class="nav-footer">
+            <div class="nav-label">Период</div>
+            <div class="period-badge">Янв 2024 — Фев 2026</div>
+        </div>
+    </nav>
+
+    <main class="content">
+        <!-- EXECUTIVE SUMMARY -->
+        <div class="tab-content active" id="tab-summary">
+            <div class="page-header">
+                <div>
+                    <h1>Executive Summary</h1>
+                    <p class="subtitle">Динамика клиентских сегментов программы лояльности</p>
+                </div>
+                <div class="header-meta" id="summary-header-meta">
+                    <div id="summary-channel-toggle"></div>
+                    <select id="month-selector" class="month-selector"></select>
+                </div>
+            </div>
+
+            <!-- Total Clients + Pie -->
+            <div class="total-row" id="total-row">
+                <div class="total-kpi-card" id="total-kpi"></div>
+                <div class="total-pie-card">
+                    <div class="pie-title">Доля сегментов по клиентам</div>
+                    <canvas id="chart-segment-pie" height="280"></canvas>
+                </div>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="kpi-grid" id="kpi-cards"></div>
+
+            <!-- Summary Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 id="summary-table-title">Сводная таблица по сегментам</h3>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table" id="summary-table"></table>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="charts-row">
+                <div class="card">
+                    <div class="card-header"><h3>Структура клиентской базы (2025)</h3></div>
+                    <div class="chart-container"><canvas id="chart-structure"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>ARPU по сегментам (2025), руб.</h3></div>
+                    <div class="chart-container"><canvas id="chart-arpu-all"></canvas></div>
+                </div>
+            </div>
+            <div class="charts-row">
+                <div class="card">
+                    <div class="card-header"><h3>Средний чек по сегментам (2025), руб.</h3></div>
+                    <div class="chart-container"><canvas id="chart-avgcheck-all"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>Чеков/клиента по сегментам</h3></div>
+                    <div class="chart-container"><canvas id="chart-freq-all"></canvas></div>
+                </div>
+            </div>
+            <div class="charts-row">
+                <div class="card">
+                    <div class="card-header"><h3>Удержание клиентов (без оттока)</h3></div>
+                    <div class="chart-container"><canvas id="chart-retention"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>Индекс лояльности по сегментам</h3></div>
+                    <div class="chart-container"><canvas id="chart-loyalty"></canvas></div>
+                </div>
+            </div>
+
+            <!-- McKinsey-style addendum -->
+            <div id="mck-addendum"></div>
+        </div>
+
+        <!-- SEGMENT TABS -->
+        <div class="tab-content" id="tab-active_lfl"></div>
+        <div class="tab-content" id="tab-active"></div>
+        <div class="tab-content" id="tab-churn"></div>
+        <div class="tab-content" id="tab-random"></div>
+        <div class="tab-content" id="tab-new"></div>
+
+        <!-- REPORT -->
+        <div class="tab-content" id="tab-report"></div>
+
+        <!-- Client Base -->
+        <div class="tab-content" id="tab-clientbase"></div>
+
+        <!-- CVM -->
+        <div class="tab-content" id="tab-dynamics">
+            <div class="page-header">
+                <div>
+                    <h1>Динамика базы</h1>
+                    <p class="subtitle">Клиентская база по каналам и сегментам</p>
+                </div>
+                <div class="header-meta">
+                    <select id="dyn-month-selector" class="month-selector"></select>
+                </div>
+            </div>
+            <div class="kpi-grid" id="dyn-kpi-cards"></div>
+            <div class="sub-tabs" id="dyn-sub-tabs">
+                <button class="sub-tab active" data-subtab="dyn-offline">Оффлайн</button>
+                <button class="sub-tab" data-subtab="dyn-ecom">E-commerce</button>
+                <button class="sub-tab" data-subtab="dyn-cross">Кросс-динамика</button>
+            </div>
+            <div class="sub-tab-content active" id="dyn-offline"></div>
+            <div class="sub-tab-content" id="dyn-ecom" style="display:none"></div>
+            <div class="sub-tab-content" id="dyn-cross" style="display:none"></div>
+            <div class="card" id="dyn-insights-card" style="margin-top:16px"></div>
+            <div class="card" style="margin-top:16px">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <h3>Исходные данные</h3>
+                    <button id="dyn-export-xlsx" class="btn-export">Выгрузить в Excel</button>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table" id="dyn-raw-table"></table>
+                </div>
+            </div>
+        </div>
+        <div class="tab-content" id="tab-cvm"></div>
+
+        <!-- GCG -->
+        <div class="tab-content" id="tab-gcg"></div>
+        <div class="tab-content" id="tab-trends"></div>
+        <div class="tab-content" id="tab-price_seg"></div>
+        <div class="tab-content" id="tab-check_seg"></div>
+
+        <!-- COFFEE MISSION -->
+        <div class="tab-content" id="tab-coffee"></div>
+
+        <!-- MISSIONS -->
+        <div class="tab-content" id="tab-missions">
+            <div class="page-header">
+                <div>
+                    <h1>Миссии</h1>
+                    <p class="subtitle" id="missions-page-subtitle">53 потребительские миссии · 30 787 продуктовых сопоставлений · 100% покрытие</p>
+                </div>
+                <div class="header-actions">
+                    <div class="seg-channel-toggle" id="missions-section-switch" role="tablist">
+                        <button type="button" class="seg-channel-btn active" data-section="analytics" role="tab">
+                            Анализ и динамика
+                        </button>
+                        <button type="button" class="seg-channel-btn" data-section="catalog" role="tab">
+                            Каталог
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============== CATALOG SECTION (existing) ============== -->
+            <div class="missions-section is-hidden" id="missions-section-catalog">
+                <div class="missions-toolbar">
+                    <button class="btn-secondary" id="missions-view-toggle" data-view="cards">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+                        Матрица пересечений
+                    </button>
+                </div>
+                <div class="missions-filters">
+                    <div class="filter-group">
+                        <label for="mission-filter-group">Группа</label>
+                        <select id="mission-filter-group" title="Фильтр по группе миссий">
+                            <option value="">Все группы</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="mission-filter-search">Поиск</label>
+                        <input type="text" id="mission-filter-search" placeholder="название, продукт, категория…">
+                    </div>
+                    <div class="filter-group">
+                        <label for="mission-filter-sort">Сортировка</label>
+                        <select id="mission-filter-sort" title="Сортировка списка миссий">
+                            <option value="products" selected>По числу продуктов</option>
+                            <option value="rank">По приоритету</option>
+                            <option value="name">По названию</option>
+                        </select>
+                    </div>
+                    <div class="missions-stats">
+                        <span id="missions-count-visible">— миссий</span>
+                    </div>
+                </div>
+
+                <div id="missions-cards"></div>
+                <div id="missions-heatmap" class="missions-heatmap is-hidden"></div>
+            </div>
+
+            <!-- ============== ANALYTICS SECTION (new) ============== -->
+            <div class="missions-section" id="missions-section-analytics">
+                <div id="mr-analytics-root"></div>
+            </div>
+        </div>
+
+        <!-- INSIGHTS -->
+        <div class="tab-content" id="tab-insights">
+            <div class="page-header">
+                <div>
+                    <h1>Стратегические выводы</h1>
+                    <p class="subtitle">Аналитика McKinsey-стиль | На основе данных Янв 2024 — Фев 2026</p>
+                </div>
+            </div>
+            <div id="insights-container"></div>
+        </div>
+
+        <!-- DEFINITIONS -->
+        <div class="tab-content" id="tab-definitions">
+            <div class="page-header">
+                <div>
+                    <h1>Определения сегментов</h1>
+                    <p class="subtitle">Методология сегментации клиентской базы программы лояльности</p>
+                </div>
+            </div>
+            <div id="definitions-container"></div>
+        </div>
+
+    </main>
+
+    <!-- Portal auth fallback: shown by app.js when /api/v1/auth/me returns 401 or fails -->
+    <div class="auth-overlay" id="auth-overlay">
+        <div class="auth-overlay-card">
+            <h2>Войдите в портал</h2>
+            <p>Сессия портала CVM не найдена или истекла.</p>
+            <a href="/login" target="_top">Перейти ко входу</a>
+        </div>
+    </div>
+
+    <script src="./data/data.js?v=190"></script>
+    <script src="./data/missions_data.js?v=1"></script>
+    <script src="./data/mission_report_data.js?v=5"></script>
+    <script src="./data/coffee_data.js?v=5"></script>
+    <script src="app.js?v=226"></script>
+</body>
+</html>

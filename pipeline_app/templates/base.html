@@ -20,6 +20,10 @@
         <span><span class="t">{{ title }}</span><span class="d">{{ desc }}</span></span>
       </a>
     {% endfor %}
+    <a class="nav-step {% if active == 'plan' %}active{% endif %}" data-phase="econ" href="/plan" style="margin-top:12px">
+      <span class="num {% if active == 'plan' %}on{% endif %}">П</span>
+      <span><span class="t">План месяца</span><span class="d">заготовка на обсуждение</span></span>
+    </a>
   </aside>
   <main class="main">
     {% block content %}{% endblock %}

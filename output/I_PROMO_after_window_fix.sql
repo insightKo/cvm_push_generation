@@ -1,0 +1,42 @@
+-- Окно «после» в I_PROMO: норма 4 дня (финиш + 1 … финиш + 4).
+-- Правим ТОЛЬКО те CVM-акции, у которых окно «после» длиннее 10 дней (или не задано).
+
+USE [mci_model]
+GO
+
+-- 1. Предпросмотр: что изменится
+SELECT ID_PROMO, PROMO_NAME, SEGMENT, START_DATE, FINISH_DATE
+     , START_DATE_AFTER, FINISH_DATE_AFTER
+     , DAYS_AFTER_NOW  = datediff(day, START_DATE_AFTER, FINISH_DATE_AFTER) + 1
+     , NEW_START_AFTER  = dateadd(day, 1, FINISH_DATE)
+     , NEW_FINISH_AFTER = dateadd(day, 4, FINISH_DATE)
+FROM dbo.I_PROMO (nolock)
+WHERE ID_COMPANY = 1
+  AND TYPE_PROMO = 'CVM'
+  AND ID_PROMO LIKE '101%'
+  AND START_DATE >= '2025-09-01'
+  AND (   START_DATE_AFTER IS NULL OR FINISH_DATE_AFTER IS NULL
+       OR datediff(day, START_DATE_AFTER, FINISH_DATE_AFTER) + 1 > 10)
+ORDER BY ID_PROMO;
+GO
+
+-- 2. Обновление
+UPDATE dbo.I_PROMO
+SET START_DATE_AFTER  = dateadd(day, 1, FINISH_DATE)
+  , FINISH_DATE_AFTER = dateadd(day, 4, FINISH_DATE)
+WHERE ID_COMPANY = 1
+  AND TYPE_PROMO = 'CVM'
+  AND ID_PROMO LIKE '101%'
+  AND START_DATE >= '2025-09-01'
+  AND (   START_DATE_AFTER IS NULL OR FINISH_DATE_AFTER IS NULL
+       OR datediff(day, START_DATE_AFTER, FINISH_DATE_AFTER) + 1 > 10);
+GO
+
+-- 3. Контроль: не должно остаться окон длиннее 10 дней
+SELECT ID_PROMO, PROMO_NAME, START_DATE_AFTER, FINISH_DATE_AFTER
+     , DAYS_AFTER = datediff(day, START_DATE_AFTER, FINISH_DATE_AFTER) + 1
+FROM dbo.I_PROMO (nolock)
+WHERE ID_COMPANY = 1 AND TYPE_PROMO = 'CVM' AND ID_PROMO LIKE '101%' AND START_DATE >= '2025-09-01'
+  AND (START_DATE_AFTER IS NULL OR FINISH_DATE_AFTER IS NULL OR datediff(day, START_DATE_AFTER, FINISH_DATE_AFTER) + 1 > 10)
+ORDER BY ID_PROMO;
+GO
