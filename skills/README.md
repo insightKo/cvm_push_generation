@@ -18,3 +18,4 @@
 
 Цепочка месяца: `plan-month` → `forecast-dop-to` → `promo-conditions` + `podborki` → `selections-promo` (+ ревью `sql-senior`) → `push-grid` → `push-texts` + `coupon-texts` + `image-prompts`.
 Текстовые скиллы-фильтры (`hook-generator`, `beautiful-prose`, `humanizer`, `voice-builder-dixy`, `wondelai-frameworks`, `email-marketing`, `marketing-module`) остаются в `.claude/skills/` и вызываются агентами текстов.
+| `tester` | Тестировщик | Сам проверяет технику до «проверь» Елене и вокруг деплоя: портал (headless-браузер на kz), API (pytest, время), SQL без выполнения, витрины SELECT-ами; ничего не чинит — отчёт с доказательствами |
