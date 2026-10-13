@@ -8,6 +8,7 @@
 | `plan-month` | Планировщик месяца | План акций на месяц, варианты с прогнозом, заготовка в CVM offline |
 | `promo-conditions` | Условия акции | Поля Manzana, коды категорий, инфокупон, кнопка в листе CVM offline |
 | `podborki` | Подбор ассортимента | Все целевые SKU по кодам и блокам, файлы подборок месяца, герои |
+| `assortment-check` | Проверка ассортимента в текстах | Каждый бренд/товар/вкус в пушах и купонах — есть ли в кодах акции и широко ли продаётся; порядок по продажам, первыми самые покупаемые. Обязательно перед выдачей текстов |
 | `push-grid` | Сетка PUSH | Расписание отправок по каденциям, msg, доп настройки, посадки |
 | `push-texts` | Тексты пушей | Заголовок ≤20 / тело ≤200 по канонам механик, запись после ОК |
 | `coupon-texts` | Тексты купонов | Инфокупоны, слипы, купоны серий с рецептами и SKU |
@@ -15,7 +16,10 @@
 | `selections-promo` | Выборки и заведение промо | I_PROMO, недельные CVM_<нед>_26.sql, КГ, выгрузки CRM_GUID |
 | `image-prompts` | Промпты картинок | Сцена по референсу бренда, без людей/текста/логотипов, баннер 21:9 |
 | `sql-senior` | Сеньор по SQL | Обязательное ревью любого SQL-скрипта на оптимальность до выдачи; смысл отбора не меняет |
-
-Цепочка месяца: `plan-month` → `forecast-dop-to` → `promo-conditions` + `podborki` → `selections-promo` (+ ревью `sql-senior`) → `push-grid` → `push-texts` + `coupon-texts` + `image-prompts`.
-Текстовые скиллы-фильтры (`hook-generator`, `beautiful-prose`, `humanizer`, `voice-builder-dixy`, `wondelai-frameworks`, `email-marketing`, `marketing-module`) остаются в `.claude/skills/` и вызываются агентами текстов.
+| `bi-senior` | Сеньор BI | Быстрые интерактивные BI-экраны портала по витринам («Срезы базы» по I_CVM_CONTACT): срезы, сводные, снимок, сверка цифр |
+| `portal-brand` | Бренд-менеджер портала | Единый бренд-бук портала (cvm_portal/docs/design/brand-book.md): подача Табло, токены, чек-лист ревью экранов |
+| `ds-senior` | Сеньор дата-сайентист | Модели по клиентской базе: кластеризация, факторы по методу компонент, деревья решений для паттернов покупок, выбор k из данных, устойчивость и доверие; модель не меняет без ОК |
 | `tester` | Тестировщик | Сам проверяет технику до «проверь» Елене и вокруг деплоя: портал (headless-браузер на kz), API (pytest, время), SQL без выполнения, витрины SELECT-ами; ничего не чинит — отчёт с доказательствами |
+
+Цепочка месяца: `plan-month` → `forecast-dop-to` → `promo-conditions` + `podborki` → `selections-promo` (+ ревью `sql-senior`) → `push-grid` → `push-texts` + `coupon-texts` (обе через `assortment-check`) + `image-prompts`.
+Текстовые скиллы-фильтры (`hook-generator`, `beautiful-prose`, `humanizer`, `voice-builder-dixy`, `wondelai-frameworks`, `email-marketing`, `marketing-module`) остаются в `.claude/skills/` и вызываются агентами текстов.
