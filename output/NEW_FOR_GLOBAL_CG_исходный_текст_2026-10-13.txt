@@ -1,0 +1,182 @@
+
+
+CREATE PROCEDURE  [dbo].[NEW_FOR_GLOBAL_CG]
+as
+set nocount on;
+set quoted_identifier on;
+
+
+drop table if exists #c
+
+select ID_COMPANY
+		, RN = ROW_NUMBER() over (order by ID_COMPANY)
+into #c
+from I_ORGANIZATION
+group by  ID_COMPANY
+
+DECLARE @c int = 1
+DECLARE @idc int = (select ID_COMPANY from #c where RN=@c)
+
+WHILE @c<= (select max(RN) from #c)
+
+BEGIN
+
+drop table if exists #ym
+
+select YEAR_MONTH
+		, RN = ROW_NUMBER() over (ORDER by YEAR_MONTH desc)
+into #ym
+from I_CALENDAR (nolock)
+where YEAR_MONTH < (select max(YEAR_MONTH) from I_CHECKHEADER (nolock) where ID_COMPANY=@idc)
+
+DECLARE  @ym int = (select YEAR_MONTH from #ym where RN=1)
+
+
+declare @act_date date = (select max(DATA) from I_CHECKHEADER (nolock) where ID_COMPANY = @idc)
+
+
+drop table if exists #t
+
+;with a as(
+select 
+	ID_CONTACT
+	, a.ID_COMPANY
+	, MIN_DATA = min(DATA)
+	, COST_DISCOUNT1 = sum(COST_DISCOUNT)
+	, COST_DISCOUNT= round(sum(COST_DISCOUNT)/10,0)
+	, COUNT_CHECK = count(ID_CHECK)
+from I_CHECKHEADER a (nolock)
+where ID_COMPANY=@idc
+group by ID_CONTACT
+	, a.ID_COMPANY
+)
+select
+		a.ID_CONTACT
+		, a.ID_COMPANY
+		, a.COST_DISCOUNT1
+		, a.COST_DISCOUNT
+		, MIN_DATA
+		, HAS_PUSH
+		, TOKENS
+		, COUNT_CHECK
+		, CONTROL_GROUP=0
+into	#t
+		
+from	 a
+		left join I_CONTACT as f
+			on a.ID_CONTACT = f.ID_CONTACT
+			and a.ID_COMPANY = f.ID_COMPANY
+where (year(MIN_DATA)*100+month(MIN_DATA))=@ym
+
+		
+--searching control group
+
+
+declare @d int =1000
+
+while @d >3
+
+begin 
+drop table if exists #cg
+
+;with x as
+(
+select ID_CONTACT
+		, RN = ROW_NUMBER() over (order by MIN_DATA, COST_DISCOUNT, COUNT_CHECK)
+from #t 
+), a as (
+select ID_CONTACT
+		, SEGMENT = RN/34
+from x 
+), n as (
+select ID_CONTACT
+		, R = ROW_NUMBER() over (partition by SEGMENT order by newid())
+from a
+)
+select ID_CONTACT
+		, ID_COMPANY=@idc
+		, CONTROL_GROUP=1
+into #cg
+from n 
+where R=1
+
+
+drop table if exists  #z
+
+;with t as (
+
+select   ID_ORGANIZATION
+		, a.ID_CONTACT
+		, CG = IIF(b.ID_CONTACT is not NULL, 1,0)
+		--, COUNT_CLIENT = count(a.ID_CONTACT)
+		, COST_DISCOUNT1=sum(a.COST_DISCOUNT)/ count(a.ID_CONTACT)
+		, COUNT_CHeCK = (count(ID_CHECK)*1.0)/count(a.ID_CONTACT)
+from I_CHECKHEADER as a (nolock)
+		left join #cg as b
+		on a.ID_CONTACT=b.ID_CONTACT
+		inner join #t as t
+		on a.ID_CONTACT=t.ID_CONTACT
+where a.ID_COMPANY=@idc and YEAR_MONTH=@ym
+group by  ID_ORGANIZATION
+		, b.CONTROL_GROUP
+		 , a.ID_CONTACT
+		 , b.ID_CONTACT
+
+)
+select	CG
+		, ID_ORGANIZATION
+		, COST_DISCOUNT= sum(COST_DISCOUNT1)/ count(ID_CONTACT)
+		, COUNT_CHECK = (sum(COUNT_CHECK)*1.00)/ count(ID_CONTACT)
+		, COUNT_CLIENT = count(ID_CONTACT)
+into #z
+from t 
+group by CG, ID_ORGANIZATION
+
+set @d = 
+(
+select avg(abs(a.COST_DISCOUNT-b.COST_DISCOUNT))
+from #z as a
+		inner join #z as b 
+		on a.ID_ORGANIZATION=b.ID_ORGANIZATION
+where a.CG=0 and b.CG=1
+
+)
+
+end
+
+--select * from #z
+--order by ID_ORGANIZATION, CG
+
+
+insert into I_GLOBAL_CG (ID_CONTACT, CONTROL_GROUP, ID_COMPANY)
+select	ID_CONTACT
+		, CONTROL_GROUP=1
+		, ID_COMPANY
+from #cg
+
+
+--update I_CONTACT
+--set CONTROL_GROUP = 0
+
+update I_CONTACT
+set CONTROL_GROUP = 1
+from I_CONTACT a (nolock)
+	inner join I_GLOBAL_CG  b (nolock)
+		on a.ID_CONTACT = b.ID_CONTACT
+		and a.ID_COMPANY = b.ID_COMPANY
+
+
+--select *
+--into I_GLOBAL_CG_mist
+--from I_GLOBAL_CG 
+
+--truncate table I_GLOBAL_CG 
+
+--insert into  I_GLOBAL_CG 
+--select *, 1
+--from  I_GLOBAL_CG_new
+
+set @c=@c+1
+set @idc = (select ID_COMPANY from #c where RN=@c)
+
+END
