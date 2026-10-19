@@ -26,13 +26,11 @@
 --   Доп ТО   — в каждом слое ΣY_ЦГ − ΣX_ЦГ · ΣY_КГ / ΣX_КГ, сумма слоёв, сумма сегментов. Слои (решения 19.10) — недели
 --              без слияния: Активные — недели давности 1–6, Новые — недели стажа 1–6, Отток — недели давности 7–15,
 --              Спящие — 4-недельные блоки давности; неделя меньше 30 клиентов КГ не сравнивается. В неделе ЦГ и КГ
---              выравниваются по сумме покупок «до»: интервалы шкалы I_INTERVALS_BUDGET_100 (100 ₽; у Оттока и Спящих —
---              I_INTERVALS_BUDGET_500, 500 ₽), доля КГ в интервале;
---              соседние интервалы сливаются, пока в объединённом нет 30 КГ; в сравнении — интервалы с ЦГ; минимальная доля
---              КГ среди них (не ниже 3 %) — доля недели;
---              где доля выше — случайно убираются лишние КГ, где ниже — лишние ЦГ. Доп ТО и показатели —
---              на выровненном списке недели; «на всю ЦГ» — Доп ТО на клиента недели × все клиенты ЦГ недели в оценке, у
---              недель без сравнения — Доп ТО на клиента сегмента. Каналы (решение 14.10) — каждый на своей базе:
+--              сравниваются по интервалам суммы покупок «до» (шкала I_INTERVALS_BUDGET_100, 100 ₽; у Оттока и Спящих —
+--              I_INTERVALS_BUDGET_500, 500 ₽): соседние интервалы шкалы сливаются, пока в объединённом нет 100 клиентов КГ;
+--              ячейка расчёта = неделя × интервал — ЦГ сравнивается с КГ той же суммы «до», никто не удаляется (решения
+--              19.10); Доп ТО недели — сумма её ячеек; «на всю ЦГ» — Доп ТО на клиента недели × все клиенты ЦГ недели в
+--              оценке, у недель без сравнения — Доп ТО на клиента сегмента. Каналы (решение 14.10) — каждый на своей базе:
 --              офлайн — сегмент, слои, «до», выбросы и ТО периода по офлайн-чекам, онлайн — по онлайн-чекам (снимок своего
 --              канала); «все каналы» = офлайн + онлайн (ошибки — сумма квадратов). Регрессия по КГ — сверка;
 --              ошибка (SE² слоёв и сегментов складываются), ДИ 95 %, MDE = 2,8 · SE, значимость — как в тесте;
@@ -40,7 +38,7 @@
 --   отклик   — доля купивших ЦГ − КГ среди вошедших, по слоям; инкрементальные покупатели — сумма слоёв;
 --   проверка «до старта» (решения 19.10) — та же формула на выровненном списке: «период» — последний отрезок «до» (неделя
 --              последней покупки; у Спящих — месяц последней покупки по снимкам I_CVM_CONTACT_DATA, они есть с 31.08.2025),
---              «до» — остальное «до»; псевдоэффект «Все каналы» дальше 3,29 ошибки — «КГ несопоставима», акция не входит в
+--              «до» — остальное «до», в проверку — клиенты с этим «до» > 0, как в основном расчёте; псевдоэффект «Все каналы» дальше 3,29 ошибки — «КГ несопоставима», акция не входит в
 --              общий эффект месяца (цифры её эффекта в витрине остаются);
 --   шесть показателей (обязательны в отчёте, 18.10): клиентов ЦГ → ARPU → средний чек → чеков на клиента → SKU в чеке →
 --              цена SKU — «в акцию» и «после», ЦГ, КГ и инкремент (₽ / шт. и %). Чеки — строки I_CHECKHEADER, SKU — его
@@ -266,9 +264,9 @@ BEGIN
         , [Без покупок до КГ]             int            NOT NULL
         , [Исключено выбросами ЦГ]        int            NOT NULL
         , [Исключено выбросами КГ]        int            NOT NULL
-        , [Не с кем сравнить ЦГ]          int            NULL       -- неделя или интервал суммы «до» меньше 30 КГ
+        , [Не с кем сравнить ЦГ]          int            NULL       -- неделя меньше 30 КГ или интервал суммы «до» без ЦГ или без КГ
         , [Не с кем сравнить КГ]          int            NULL
-        , [Убрано при выравнивании ЦГ]    int            NULL       -- лишние ЦГ / КГ в интервалах: доля КГ выровнена до доли недели
+        , [Убрано при выравнивании ЦГ]    int            NULL       -- с 19.10 (сравнение по интервалам без удаления) — 0
         , [Убрано при выравнивании КГ]    int            NULL
         , [Сегменты без оценки ЦГ]        int            NOT NULL   -- в сегменте меньше 2 клиентов КГ в оценке
         , [Сегменты без оценки КГ]        int            NOT NULL
@@ -393,7 +391,7 @@ BEGIN
         , ID_ORGANIZATION int            NOT NULL   -- канал акции: 1 офлайн, 3 онлайн
         , SEGMENT_ID      tinyint        NOT NULL   -- сегмент на старте: 2 Активные, 1 Новые, 5 Отток, 6 Спящие
         , SEGMENT_NAME    nvarchar(20)   NOT NULL
-        , LAYER_NO        smallint       NOT NULL   -- неделя давности (у Новых — стажа, у Спящих — 4-недельный блок): 1 — самая свежая
+        , LAYER_NO        smallint       NOT NULL   -- ячейка в сегменте: неделя давности × интервал суммы «до», по порядку
         , LAYER_BASIS     nvarchar(40)   NOT NULL   -- по чему слой
         , WEEK_FROM       smallint       NOT NULL   -- недели слоя (давности или стажа), с … по
         , WEEK_TO         smallint       NOT NULL
@@ -422,10 +420,10 @@ BEGIN
         , SKU_CG          decimal(19, 3) NULL
         , EXP_CHECKS_TG   decimal(19, 3) NULL       -- ожидаемые чеки ЦГ без акции = чеки КГ · ΣX_ЦГ / ΣX_КГ
         , EXP_SKU_TG      decimal(19, 3) NULL       -- ожидаемые SKU ЦГ без акции = SKU КГ · ΣX_ЦГ / ΣX_КГ
-        , CLIENTS_TG_ALL  int            NULL       -- клиентов ЦГ / КГ недели в оценке до выравнивания по сумме покупок «до»
+        , CLIENTS_TG_ALL  int            NULL       -- клиентов ЦГ / КГ всей недели в оценке (ячейка — её часть)
         , CLIENTS_CG_ALL  int            NULL
-        , KG_SHARE        decimal(9, 3)  NULL       -- доля КГ недели после выравнивания, % (минимальная по интервалам суммы, не ниже 3 %)
-        , INTERVALS       int            NULL       -- интервалов суммы «до» в сравнении (соседние интервалы шкалы слиты до 30 КГ)
+        , KG_SHARE        decimal(9, 3)  NULL       -- доля КГ в ячейке, %
+        , INTERVALS       int            NULL       -- непустых интервалов шкалы суммы «до» в ячейке (соседние слиты до 100 КГ)
         , IN_TOTAL        bit            NOT NULL   -- 1 — слой входит в итог акции (в I_CVM_EFFECT)
         , PRELIM          bit            NOT NULL   -- предварительная
         , CALC_DT         datetime2(0)   NOT NULL
@@ -592,8 +590,9 @@ BEGIN
     DECLARE @hist_days    int   = 105;                  -- граница Оттока; окно чеков для сегмента: старт − 105 … старт − 1
     DECLARE @after_days   int   = 4;                    -- «после»: финиш + 1 … финиш + 4
     DECLARE @layer_min_cg int   = 30;                   -- в неделе и в интервале суммы — не меньше 30 клиентов КГ
-    DECLARE @kg_share_min float = 0.03;                 -- нижняя граница доли КГ недели (решение 19.10)
+    DECLARE @iv_min_cg    int   = 100;                  -- интервал суммы «до»: соседние интервалы шкалы сливаются до 100 клиентов КГ (решение 19.10)
     DECLARE @iv_last1     int, @iv_last2 int;           -- последний интервал шкал 100 ₽ / 500 ₽ (сумма выше всех границ)
+    DECLARE @ivmax1 float, @ivmax2 float, @bw1 float, @bw2 float;   -- перф 19.10: верх шкал 100 ₽ / 500 ₽ и ширина корзины поиска интервала
     DECLARE @z_pseudo     float = 3.29;                 -- «КГ несопоставима»: псевдоэффект «до старта» дальше 3,29 ошибки (решение 19.10)
     DECLARE @margin       float = 0.3;                  -- PL: маржа
     DECLARE @vat          float = 1.15;                 -- PL: средний НДС
@@ -713,14 +712,13 @@ BEGIN
                           , XG1 decimal(19, 2) NOT NULL, XG3 decimal(19, 2) NOT NULL      -- ТО после даты снимка канала … старт − 1
                           , Y1 decimal(19, 2) NOT NULL, Y3 decimal(19, 2) NOT NULL   -- ТО в дни акции: офлайн / онлайн
                           , A1 decimal(19, 2) NOT NULL, A3 decimal(19, 2) NOT NULL   -- ТО «после»: офлайн / онлайн
-                          , B_IN tinyint NOT NULL, B_IN1 tinyint NOT NULL, B_IN3 tinyint NOT NULL       -- купил в дни акции: любой / офлайн / онлайн
-                          , B_AFT tinyint NOT NULL, B_AFT1 tinyint NOT NULL, B_AFT3 tinyint NOT NULL   -- купил «после»
+                          , B_IN1 tinyint NOT NULL, B_IN3 tinyint NOT NULL       -- купил в дни акции: офлайн / онлайн
+                          , B_AFT1 tinyint NOT NULL, B_AFT3 tinyint NOT NULL     -- купил «после»
                           , C1 int NOT NULL, C3 int NOT NULL, K1 int NOT NULL, K3 int NOT NULL       -- чеки и SKU в дни акции: офлайн / онлайн
                           , CA1 int NOT NULL, CA3 int NOT NULL, KA1 int NOT NULL, KA3 int NOT NULL  -- чеки и SKU «после»
-                          -- ТО по неделям давности 1–15 (неделя w — дни старт − 7w … старт − 7w + 6): офлайн _1, онлайн _3 —
-                          -- для проверки «до старта» (неделя последней покупки против «до» раньше неё)
-                          , W1_1 decimal(19, 2) NOT NULL, W2_1 decimal(19, 2) NOT NULL, W3_1 decimal(19, 2) NOT NULL, W4_1 decimal(19, 2) NOT NULL, W5_1 decimal(19, 2) NOT NULL, W6_1 decimal(19, 2) NOT NULL, W7_1 decimal(19, 2) NOT NULL, W8_1 decimal(19, 2) NOT NULL, W9_1 decimal(19, 2) NOT NULL, W10_1 decimal(19, 2) NOT NULL, W11_1 decimal(19, 2) NOT NULL, W12_1 decimal(19, 2) NOT NULL, W13_1 decimal(19, 2) NOT NULL, W14_1 decimal(19, 2) NOT NULL, W15_1 decimal(19, 2) NOT NULL
-                          , W1_3 decimal(19, 2) NOT NULL, W2_3 decimal(19, 2) NOT NULL, W3_3 decimal(19, 2) NOT NULL, W4_3 decimal(19, 2) NOT NULL, W5_3 decimal(19, 2) NOT NULL, W6_3 decimal(19, 2) NOT NULL, W7_3 decimal(19, 2) NOT NULL, W8_3 decimal(19, 2) NOT NULL, W9_3 decimal(19, 2) NOT NULL, W10_3 decimal(19, 2) NOT NULL, W11_3 decimal(19, 2) NOT NULL, W12_3 decimal(19, 2) NOT NULL, W13_3 decimal(19, 2) NOT NULL, W14_3 decimal(19, 2) NOT NULL, W15_3 decimal(19, 2) NOT NULL);
+                          -- ТО недели последней покупки «до» (неделя давности 1–15, неделя w — дни старт − 7w … старт − 7w + 6): офлайн / онлайн —
+                          -- для проверки «до старта» (неделя последней покупки против «до» раньше неё); перф 19.10 — вместо 30 недельных колонок
+                          , P1 decimal(19, 2) NULL, P3 decimal(19, 2) NULL);
     CREATE CLUSTERED COLUMNSTORE INDEX cci_ce_agg ON #ce_agg;
     CREATE TABLE #ce_pc    (ID_PROMO int NOT NULL, ID_CONTACT int NOT NULL, CG tinyint NOT NULL
                           , SEG tinyint NOT NULL          -- 2 Активные, 1 Новые, 5 Отток, 6 Спящие, 0 нет покупок в канале
@@ -758,6 +756,10 @@ BEGIN
     -- выравнивание ЦГ и КГ в неделе по сумме покупок «до» (решения 19.10)
     -- шкалы суммы «до»: SC 1 — I_INTERVALS_BUDGET_100 (Активные, Новые), 2 — I_INTERVALS_BUDGET_500 (Отток, Спящие; решение 19.10)
     CREATE TABLE #ce_ivt   (SC tinyint NOT NULL, ID_INTERVAL int NOT NULL, FINISH_SUM float NOT NULL, PRIMARY KEY (SC, FINISH_SUM, ID_INTERVAL));
+    -- перф 19.10: корзины шкалы — поиск интервала суммы «до» равенством (SC, B) и условием LO < X ≤ HI (тысячи строк)
+    CREATE TABLE #ce_ivb   (SC tinyint NOT NULL, B bigint NOT NULL, ID_INTERVAL int NOT NULL, LO float NULL, HI float NOT NULL
+                          , PRIMARY KEY (SC, B, HI));
+    CREATE TABLE #ce_num   (N int NOT NULL PRIMARY KEY);   -- числа 0 … 99 999 для корзин шкалы (поиск по ключу, не перебор)
     CREATE TABLE #ce_ev    (ID_PROMO int NOT NULL, ID_CONTACT int NOT NULL, SEG tinyint NOT NULL, CG tinyint NOT NULL
                           , RL smallint NOT NULL, IV int NOT NULL);           -- клиент в оценке: неделя, интервал суммы «до»
     CREATE CLUSTERED COLUMNSTORE INDEX cci_ce_ev ON #ce_ev;
@@ -769,11 +771,9 @@ BEGIN
     -- интервалы сравнения — группы соседних интервалов шкалы (IV = первый интервал группы)
     CREATE TABLE #ce_is    (ID_PROMO int NOT NULL, SEG tinyint NOT NULL, RL smallint NOT NULL, IV int NOT NULL
                           , N0 int NOT NULL, N1 int NOT NULL, OK tinyint NOT NULL
-                          , KEEP0 int NULL, KEEP1 int NULL   -- ЦГ и КГ, остающиеся после выравнивания
                           , PRIMARY KEY (ID_PROMO, SEG, RL, IV));
-    CREATE TABLE #ce_ws    (ID_PROMO int NOT NULL, SEG tinyint NOT NULL, RL smallint NOT NULL, SHARE float NOT NULL   -- доля КГ недели
-                          , PRIMARY KEY (ID_PROMO, SEG, RL));
-    CREATE TABLE #ce_kp    (ID_PROMO int NOT NULL, ID_CONTACT int NOT NULL, RL smallint NOT NULL);   -- выровненный список
+    CREATE TABLE #ce_kp    (ID_PROMO int NOT NULL, ID_CONTACT int NOT NULL, RL smallint NOT NULL
+                          , LAYER int NOT NULL);           -- клиенты в сравнении: неделя и ячейка (неделя · 100000 + интервал)
     CREATE CLUSTERED COLUMNSTORE INDEX cci_ce_kp ON #ce_kp;
     -- проверка «до старта» (решения 19.10): Спящие — месяц последней покупки по снимкам; оценка псевдоэффекта
     CREATE TABLE #ce_spk   (ID_PROMO int NOT NULL, ID_CONTACT int NOT NULL, ORG int NOT NULL, M1 date NOT NULL, M0 date NOT NULL
@@ -792,7 +792,7 @@ BEGIN
     CREATE TABLE #ce_q2    (ID_PROMO int NOT NULL, SEG tinyint NOT NULL, LAYER int NOT NULL, CG tinyint NOT NULL, SS float NULL);
     CREATE TABLE #ce_qt    (ID_PROMO int NOT NULL, CH tinyint NOT NULL, PS float NULL, PSE2 float NULL, PRIMARY KEY (ID_PROMO, CH));
     CREATE TABLE #ce_wn    (ID_PROMO int NOT NULL, SEG tinyint NOT NULL, RL smallint NOT NULL
-                          , N0ALL int NOT NULL, N1ALL int NOT NULL, IVS int NOT NULL   -- ЦГ и КГ недели до выравнивания, интервалов в сравнении
+                          , N0ALL int NOT NULL, N1ALL int NOT NULL, IVS int NOT NULL   -- ЦГ и КГ недели в оценке, интервалов в сравнении
                           , PRIMARY KEY (ID_PROMO, SEG, RL));
     CREATE TABLE #ce_segok (ID_PROMO int NOT NULL, SEG tinyint NOT NULL, N0 int NOT NULL, N1 int NOT NULL, OK tinyint NOT NULL);
     CREATE TABLE #ce_e1    (ID_PROMO int NOT NULL, SEG tinyint NOT NULL, LAYER int NOT NULL, PER tinyint NOT NULL, CH tinyint NOT NULL
@@ -859,6 +859,35 @@ BEGIN
         SELECT TOP (1) @iv_last2 = ID_INTERVAL FROM #ce_ivt WHERE SC = 2 ORDER BY FINISH_SUM DESC, ID_INTERVAL DESC;
         IF @iv_last1 IS NULL OR @iv_last2 IS NULL
             THROW 50001, N'CVM_EFFECT_TODAY: шкала dbo.I_INTERVALS_BUDGET_100 или _500 пустая — ничего не записано.', 1;
+
+        -- перф 19.10: корзины шкалы для поиска интервала равенством (результат тот же, что TOP (1) … WHERE FINISH_SUM >= X
+        -- ORDER BY FINISH_SUM, ID_INTERVAL): интервал шкалы — полуинтервал (LO, HI], HI — FINISH_SUM, LO — предыдущий FINISH_SUM
+        -- шкалы, при равных FINISH_SUM — меньший ID_INTERVAL; ширина корзины — max FINISH_SUM / (4 · число границ шкалы, не больше
+        -- 65 536): на клиента ~1 кандидат; интервал записан во все корзины ⌊LO / ширина⌋ … ⌊HI / ширина⌋ (деление на положительное
+        -- монотонно — корзина клиента среди них всегда есть); корзин не больше 65 537 — числа 0 … 99 999 хватает
+        SELECT @ivmax1 = max(FINISH_SUM), @bw1 = count(DISTINCT FINISH_SUM) FROM #ce_ivt WHERE SC = 1;
+        SELECT @ivmax2 = max(FINISH_SUM), @bw2 = count(DISTINCT FINISH_SUM) FROM #ce_ivt WHERE SC = 2;
+        SELECT @bw1 = CASE WHEN @ivmax1 > 0 THEN @ivmax1 / CASE WHEN 4e0 * @bw1 < 65536e0 THEN 4e0 * @bw1 ELSE 65536e0 END ELSE 1e0 END
+             , @bw2 = CASE WHEN @ivmax2 > 0 THEN @ivmax2 / CASE WHEN 4e0 * @bw2 < 65536e0 THEN 4e0 * @bw2 ELSE 65536e0 END ELSE 1e0 END;
+        INSERT INTO #ce_num (N)
+        SELECT a.d + 10 * b.d + 100 * c.d + 1000 * e.d + 10000 * f.d
+        FROM (VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)) AS a (d)
+             CROSS JOIN (VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)) AS b (d)
+             CROSS JOIN (VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)) AS c (d)
+             CROSS JOIN (VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)) AS e (d)
+             CROSS JOIN (VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9)) AS f (d);
+        INSERT INTO #ce_ivb (SC, B, ID_INTERVAL, LO, HI)
+        SELECT r.SC, r.B0 + n.N, r.ID_INTERVAL, r.LO, r.HI
+        FROM (SELECT g.SC, g.ID_INTERVAL, g.LO, g.HI
+                   , B0 = CASE WHEN g.LO IS NULL OR g.LO <= 0e0 THEN CAST(0 AS bigint) ELSE CAST(floor(g.LO / w.W) AS bigint) END
+                   , B1 = CAST(floor(g.HI / w.W) AS bigint)
+              FROM (SELECT SC, ID_INTERVAL = min(ID_INTERVAL), HI = FINISH_SUM
+                         , LO = LAG(FINISH_SUM) OVER (PARTITION BY SC ORDER BY FINISH_SUM)
+                    FROM #ce_ivt
+                    GROUP BY SC, FINISH_SUM) AS g
+                   CROSS APPLY (SELECT W = CASE g.SC WHEN 1 THEN @bw1 ELSE @bw2 END) AS w
+              WHERE g.HI > 0e0) AS r              -- X > 0: интервалы целиком не выше 0 не нужны
+             JOIN #ce_num AS n ON n.N <= r.B1 - r.B0;      -- поиск по ключу: строк — сколько корзин, ~5 на интервал
 
         IF OBJECT_ID('dbo.I_DISCOUNT_CHECK', 'U') IS NULL OR OBJECT_ID('dbo.I_PROMO_CAMPAIGN_LINK', 'U') IS NULL
            OR OBJECT_ID('dbo.I_DISCOUNT_STATE', 'U') IS NULL OR OBJECT_ID('dbo.I_DISCOUNT_DAY', 'U') IS NULL
@@ -1088,7 +1117,7 @@ BEGIN
                     TRUNCATE TABLE #ce_snap;  TRUNCATE TABLE #ce_ch;    TRUNCATE TABLE #ce_agg;   TRUNCATE TABLE #ce_pc;
                     TRUNCATE TABLE #ce_cl;    TRUNCATE TABLE #ce_dsc;   TRUNCATE TABLE #ce_thr;   TRUNCATE TABLE #ce_xpre;
                     TRUNCATE TABLE #ce_xdrop; TRUNCATE TABLE #ce_lw;    TRUNCATE TABLE #ce_lmap;  TRUNCATE TABLE #ce_lrng;
-                    TRUNCATE TABLE #ce_ev;    TRUNCATE TABLE #ce_is;    TRUNCATE TABLE #ce_ws;    TRUNCATE TABLE #ce_kp;
+                    TRUNCATE TABLE #ce_ev;    TRUNCATE TABLE #ce_is;    TRUNCATE TABLE #ce_kp;
                     TRUNCATE TABLE #ce_is0;   TRUNCATE TABLE #ce_ivm;
                     TRUNCATE TABLE #ce_wn;    TRUNCATE TABLE #ce_bb;    TRUNCATE TABLE #ce_all;
                     TRUNCATE TABLE #ce_spk;   TRUNCATE TABLE #ce_srd;   TRUNCATE TABLE #ce_sx;    TRUNCATE TABLE #ce_sp;    TRUNCATE TABLE #ce_q1;
@@ -1315,72 +1344,84 @@ BEGIN
                             BREAK;
                         END
 
+                        -- перф 19.10 (результат тот же): период и канал чека — один раз на строку (PO: 0 «до», 10 в акцию, 20 «после»
+                        --   + канал 1 / 3; WO: неделя давности · 10 + канал, только «до»), агрегаты — сравнением с одним числом; дни окна
+                        --   [старт − 105, финиш + 4] делятся на «до» (≤ старт − 1), в акцию (старт … финиш) и «после» (финиш + 1 …) без зазоров.
+                        --   Колонки B_IN / B_AFT «любой канал» не считаются — дальше не используются. Недельные суммы W1…W15 остаются
+                        --   в агрегате, в #ce_agg пишется только ТО недели последней покупки канала (P1 / P3) — 2 колонки вместо 30
                         INSERT INTO #ce_agg WITH (TABLOCK) (ID_PROMO, ID_CONTACT, LAST_W1, FIRST_W1, LAST_W3, FIRST_W3, X42_1, X42_3, XG1, XG3, Y1, Y3, A1, A3
-                                                          , B_IN, B_IN1, B_IN3, B_AFT, B_AFT1, B_AFT3, C1, C3, K1, K3, CA1, CA3, KA1, KA3
-                                                          , W1_1, W2_1, W3_1, W4_1, W5_1, W6_1, W7_1, W8_1, W9_1, W10_1, W11_1, W12_1, W13_1, W14_1, W15_1, W1_3, W2_3, W3_3, W4_3, W5_3, W6_3, W7_3, W8_3, W9_3, W10_3, W11_3, W12_3, W13_3, W14_3, W15_3)
-                        SELECT l.ID_PROMO, l.ID_CONTACT
-                             , LAST_W1  = max(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt THEN c.DATA END)
-                             , FIRST_W1 = min(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt THEN c.DATA END)
-                             , LAST_W3  = max(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt THEN c.DATA END)
-                             , FIRST_W3 = min(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt THEN c.DATA END)
-                             , X42_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @pf AND c.DATA <= @pt THEN c.TO_RUB ELSE 0 END)
-                             , X42_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @pf AND c.DATA <= @pt THEN c.TO_RUB ELSE 0 END)
-                             -- после даты снимка канала (снимка нет или он старше окна чеков — всё окно) … старт − 1
-                             , XG1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA > @ref1 AND c.DATA <= @pt THEN c.TO_RUB ELSE 0 END)
-                             , XG3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA > @ref3 AND c.DATA <= @pt THEN c.TO_RUB ELSE 0 END)
-                             , Y1  = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @sd AND c.DATA <= @fd THEN c.TO_RUB ELSE 0 END)
-                             , Y3  = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @sd AND c.DATA <= @fd THEN c.TO_RUB ELSE 0 END)
-                             , A1  = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @af AND c.DATA <= @at THEN c.TO_RUB ELSE 0 END)
-                             , A3  = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @af AND c.DATA <= @at THEN c.TO_RUB ELSE 0 END)
-                             , B_IN   = max(CASE WHEN c.DATA >= @sd AND c.DATA <= @fd THEN 1 ELSE 0 END)
-                             , B_IN1  = max(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @sd AND c.DATA <= @fd THEN 1 ELSE 0 END)
-                             , B_IN3  = max(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @sd AND c.DATA <= @fd THEN 1 ELSE 0 END)
-                             , B_AFT  = max(CASE WHEN c.DATA >= @af AND c.DATA <= @at THEN 1 ELSE 0 END)
-                             , B_AFT1 = max(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @af AND c.DATA <= @at THEN 1 ELSE 0 END)
-                             , B_AFT3 = max(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @af AND c.DATA <= @at THEN 1 ELSE 0 END)
-                             , C1  = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @sd AND c.DATA <= @fd THEN 1 ELSE 0 END)
-                             , C3  = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @sd AND c.DATA <= @fd THEN 1 ELSE 0 END)
-                             , K1  = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @sd AND c.DATA <= @fd THEN c.SKU ELSE 0 END)
-                             , K3  = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @sd AND c.DATA <= @fd THEN c.SKU ELSE 0 END)
-                             , CA1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @af AND c.DATA <= @at THEN 1 ELSE 0 END)
-                             , CA3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @af AND c.DATA <= @at THEN 1 ELSE 0 END)
-                             , KA1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA >= @af AND c.DATA <= @at THEN c.SKU ELSE 0 END)
-                             , KA3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA >= @af AND c.DATA <= @at THEN c.SKU ELSE 0 END)
-                             , W1_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 1 THEN c.TO_RUB ELSE 0 END)
-                             , W2_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 2 THEN c.TO_RUB ELSE 0 END)
-                             , W3_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 3 THEN c.TO_RUB ELSE 0 END)
-                             , W4_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 4 THEN c.TO_RUB ELSE 0 END)
-                             , W5_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 5 THEN c.TO_RUB ELSE 0 END)
-                             , W6_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 6 THEN c.TO_RUB ELSE 0 END)
-                             , W7_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 7 THEN c.TO_RUB ELSE 0 END)
-                             , W8_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 8 THEN c.TO_RUB ELSE 0 END)
-                             , W9_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 9 THEN c.TO_RUB ELSE 0 END)
-                             , W10_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 10 THEN c.TO_RUB ELSE 0 END)
-                             , W11_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 11 THEN c.TO_RUB ELSE 0 END)
-                             , W12_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 12 THEN c.TO_RUB ELSE 0 END)
-                             , W13_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 13 THEN c.TO_RUB ELSE 0 END)
-                             , W14_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 14 THEN c.TO_RUB ELSE 0 END)
-                             , W15_1 = sum(CASE WHEN c.ID_ORGANIZATION = 1 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 15 THEN c.TO_RUB ELSE 0 END)
-                             , W1_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 1 THEN c.TO_RUB ELSE 0 END)
-                             , W2_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 2 THEN c.TO_RUB ELSE 0 END)
-                             , W3_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 3 THEN c.TO_RUB ELSE 0 END)
-                             , W4_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 4 THEN c.TO_RUB ELSE 0 END)
-                             , W5_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 5 THEN c.TO_RUB ELSE 0 END)
-                             , W6_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 6 THEN c.TO_RUB ELSE 0 END)
-                             , W7_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 7 THEN c.TO_RUB ELSE 0 END)
-                             , W8_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 8 THEN c.TO_RUB ELSE 0 END)
-                             , W9_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 9 THEN c.TO_RUB ELSE 0 END)
-                             , W10_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 10 THEN c.TO_RUB ELSE 0 END)
-                             , W11_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 11 THEN c.TO_RUB ELSE 0 END)
-                             , W12_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 12 THEN c.TO_RUB ELSE 0 END)
-                             , W13_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 13 THEN c.TO_RUB ELSE 0 END)
-                             , W14_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 14 THEN c.TO_RUB ELSE 0 END)
-                             , W15_3 = sum(CASE WHEN c.ID_ORGANIZATION = 3 AND c.DATA <= @pt AND (datediff(day, c.DATA, @sd) - 1) / 7 + 1 = 15 THEN c.TO_RUB ELSE 0 END)
-                        FROM #ce_list AS l
-                             JOIN #ce_ch AS c ON c.ID_CONTACT = l.ID_CONTACT AND c.DATA >= @hf AND c.DATA <= @at
-                        WHERE l.ID_PROMO = @pid
-                          AND l.IS_FRAUD = 0
-                        GROUP BY l.ID_PROMO, l.ID_CONTACT
+                                                          , B_IN1, B_IN3, B_AFT1, B_AFT3, C1, C3, K1, K3, CA1, CA3, KA1, KA3, P1, P3)
+                        SELECT q.ID_PROMO, q.ID_CONTACT, q.LAST_W1, q.FIRST_W1, q.LAST_W3, q.FIRST_W3, q.X42_1, q.X42_3, q.XG1, q.XG3
+                             , q.Y1, q.Y3, q.A1, q.A3, q.B_IN1, q.B_IN3, q.B_AFT1, q.B_AFT3, q.C1, q.C3, q.K1, q.K3, q.CA1, q.CA3, q.KA1, q.KA3
+                             -- ТО недели последней покупки канала (неделя давности 1–15); покупок в «до» нет — пусто
+                             , P1 = CASE (datediff(day, q.LAST_W1, @sd) - 1) / 7 + 1 WHEN 1 THEN q.W1_1 WHEN 2 THEN q.W2_1 WHEN 3 THEN q.W3_1 WHEN 4 THEN q.W4_1 WHEN 5 THEN q.W5_1 WHEN 6 THEN q.W6_1 WHEN 7 THEN q.W7_1 WHEN 8 THEN q.W8_1 WHEN 9 THEN q.W9_1 WHEN 10 THEN q.W10_1 WHEN 11 THEN q.W11_1 WHEN 12 THEN q.W12_1 WHEN 13 THEN q.W13_1 WHEN 14 THEN q.W14_1 WHEN 15 THEN q.W15_1 END
+                             , P3 = CASE (datediff(day, q.LAST_W3, @sd) - 1) / 7 + 1 WHEN 1 THEN q.W1_3 WHEN 2 THEN q.W2_3 WHEN 3 THEN q.W3_3 WHEN 4 THEN q.W4_3 WHEN 5 THEN q.W5_3 WHEN 6 THEN q.W6_3 WHEN 7 THEN q.W7_3 WHEN 8 THEN q.W8_3 WHEN 9 THEN q.W9_3 WHEN 10 THEN q.W10_3 WHEN 11 THEN q.W11_3 WHEN 12 THEN q.W12_3 WHEN 13 THEN q.W13_3 WHEN 14 THEN q.W14_3 WHEN 15 THEN q.W15_3 END
+                        FROM (SELECT l.ID_PROMO, l.ID_CONTACT
+                                   , LAST_W1  = max(CASE WHEN x.PO = 1 THEN c.DATA END)
+                                   , FIRST_W1 = min(CASE WHEN x.PO = 1 THEN c.DATA END)
+                                   , LAST_W3  = max(CASE WHEN x.PO = 3 THEN c.DATA END)
+                                   , FIRST_W3 = min(CASE WHEN x.PO = 3 THEN c.DATA END)
+                                   , X42_1 = sum(CASE WHEN x.PO = 1 AND c.DATA >= @pf THEN c.TO_RUB ELSE 0 END)
+                                   , X42_3 = sum(CASE WHEN x.PO = 3 AND c.DATA >= @pf THEN c.TO_RUB ELSE 0 END)
+                                   -- после даты снимка канала (снимка нет или он старше окна чеков — всё окно) … старт − 1
+                                   , XG1 = sum(CASE WHEN x.PO = 1 AND c.DATA > @ref1 THEN c.TO_RUB ELSE 0 END)
+                                   , XG3 = sum(CASE WHEN x.PO = 3 AND c.DATA > @ref3 THEN c.TO_RUB ELSE 0 END)
+                                   , Y1  = sum(CASE WHEN x.PO = 11 THEN c.TO_RUB ELSE 0 END)
+                                   , Y3  = sum(CASE WHEN x.PO = 13 THEN c.TO_RUB ELSE 0 END)
+                                   , A1  = sum(CASE WHEN x.PO = 21 THEN c.TO_RUB ELSE 0 END)
+                                   , A3  = sum(CASE WHEN x.PO = 23 THEN c.TO_RUB ELSE 0 END)
+                                   , B_IN1  = max(CASE WHEN x.PO = 11 THEN 1 ELSE 0 END)
+                                   , B_IN3  = max(CASE WHEN x.PO = 13 THEN 1 ELSE 0 END)
+                                   , B_AFT1 = max(CASE WHEN x.PO = 21 THEN 1 ELSE 0 END)
+                                   , B_AFT3 = max(CASE WHEN x.PO = 23 THEN 1 ELSE 0 END)
+                                   , C1  = sum(CASE WHEN x.PO = 11 THEN 1 ELSE 0 END)
+                                   , C3  = sum(CASE WHEN x.PO = 13 THEN 1 ELSE 0 END)
+                                   , K1  = sum(CASE WHEN x.PO = 11 THEN c.SKU ELSE 0 END)
+                                   , K3  = sum(CASE WHEN x.PO = 13 THEN c.SKU ELSE 0 END)
+                                   , CA1 = sum(CASE WHEN x.PO = 21 THEN 1 ELSE 0 END)
+                                   , CA3 = sum(CASE WHEN x.PO = 23 THEN 1 ELSE 0 END)
+                                   , KA1 = sum(CASE WHEN x.PO = 21 THEN c.SKU ELSE 0 END)
+                                   , KA3 = sum(CASE WHEN x.PO = 23 THEN c.SKU ELSE 0 END)
+                                   -- ТО по неделям давности 1–15 (неделя w — дни старт − 7w … старт − 7w + 6): офлайн _1, онлайн _3
+                                   , W1_1 = sum(CASE WHEN x.WO = 11 THEN c.TO_RUB ELSE 0 END)
+                                   , W2_1 = sum(CASE WHEN x.WO = 21 THEN c.TO_RUB ELSE 0 END)
+                                   , W3_1 = sum(CASE WHEN x.WO = 31 THEN c.TO_RUB ELSE 0 END)
+                                   , W4_1 = sum(CASE WHEN x.WO = 41 THEN c.TO_RUB ELSE 0 END)
+                                   , W5_1 = sum(CASE WHEN x.WO = 51 THEN c.TO_RUB ELSE 0 END)
+                                   , W6_1 = sum(CASE WHEN x.WO = 61 THEN c.TO_RUB ELSE 0 END)
+                                   , W7_1 = sum(CASE WHEN x.WO = 71 THEN c.TO_RUB ELSE 0 END)
+                                   , W8_1 = sum(CASE WHEN x.WO = 81 THEN c.TO_RUB ELSE 0 END)
+                                   , W9_1 = sum(CASE WHEN x.WO = 91 THEN c.TO_RUB ELSE 0 END)
+                                   , W10_1 = sum(CASE WHEN x.WO = 101 THEN c.TO_RUB ELSE 0 END)
+                                   , W11_1 = sum(CASE WHEN x.WO = 111 THEN c.TO_RUB ELSE 0 END)
+                                   , W12_1 = sum(CASE WHEN x.WO = 121 THEN c.TO_RUB ELSE 0 END)
+                                   , W13_1 = sum(CASE WHEN x.WO = 131 THEN c.TO_RUB ELSE 0 END)
+                                   , W14_1 = sum(CASE WHEN x.WO = 141 THEN c.TO_RUB ELSE 0 END)
+                                   , W15_1 = sum(CASE WHEN x.WO = 151 THEN c.TO_RUB ELSE 0 END)
+                                   , W1_3 = sum(CASE WHEN x.WO = 13 THEN c.TO_RUB ELSE 0 END)
+                                   , W2_3 = sum(CASE WHEN x.WO = 23 THEN c.TO_RUB ELSE 0 END)
+                                   , W3_3 = sum(CASE WHEN x.WO = 33 THEN c.TO_RUB ELSE 0 END)
+                                   , W4_3 = sum(CASE WHEN x.WO = 43 THEN c.TO_RUB ELSE 0 END)
+                                   , W5_3 = sum(CASE WHEN x.WO = 53 THEN c.TO_RUB ELSE 0 END)
+                                   , W6_3 = sum(CASE WHEN x.WO = 63 THEN c.TO_RUB ELSE 0 END)
+                                   , W7_3 = sum(CASE WHEN x.WO = 73 THEN c.TO_RUB ELSE 0 END)
+                                   , W8_3 = sum(CASE WHEN x.WO = 83 THEN c.TO_RUB ELSE 0 END)
+                                   , W9_3 = sum(CASE WHEN x.WO = 93 THEN c.TO_RUB ELSE 0 END)
+                                   , W10_3 = sum(CASE WHEN x.WO = 103 THEN c.TO_RUB ELSE 0 END)
+                                   , W11_3 = sum(CASE WHEN x.WO = 113 THEN c.TO_RUB ELSE 0 END)
+                                   , W12_3 = sum(CASE WHEN x.WO = 123 THEN c.TO_RUB ELSE 0 END)
+                                   , W13_3 = sum(CASE WHEN x.WO = 133 THEN c.TO_RUB ELSE 0 END)
+                                   , W14_3 = sum(CASE WHEN x.WO = 143 THEN c.TO_RUB ELSE 0 END)
+                                   , W15_3 = sum(CASE WHEN x.WO = 153 THEN c.TO_RUB ELSE 0 END)
+                              FROM #ce_list AS l
+                                   JOIN #ce_ch AS c ON c.ID_CONTACT = l.ID_CONTACT AND c.DATA >= @hf AND c.DATA <= @at
+                                   CROSS APPLY (SELECT PO = CASE WHEN c.DATA <= @pt THEN 0 WHEN c.DATA <= @fd THEN 10 ELSE 20 END + c.ID_ORGANIZATION
+                                                     , WO = CASE WHEN c.DATA <= @pt
+                                                                 THEN ((datediff(day, c.DATA, @sd) - 1) / 7 + 1) * 10 + c.ID_ORGANIZATION
+                                                                 ELSE 0 END) AS x
+                              WHERE l.ID_PROMO = @pid
+                                AND l.IS_FRAUD = 0
+                              GROUP BY l.ID_PROMO, l.ID_CONTACT) AS q
                         OPTION (RECOMPILE, MAX_GRANT_PERCENT = 10);
 
                         SET @k += 1;
@@ -1392,7 +1433,10 @@ BEGIN
                     -- ---------- 6. Сегмент на старте, единица слоя и «до» ----------
                     -- первая покупка в канале — более ранняя из снимка и окна чеков; последняя — из окна чеков (старт − 105 …
                     -- старт − 1), а без покупок в окне — из снимка, если она раньше окна (Спящие). Слой: Активные и Отток —
-                    -- неделя давности, Новые — неделя стажа, Спящие — 4-недельный блок давности (недели 16–19 — блок 1 …)
+                    -- неделя давности, Новые — неделя стажа, Спящие — 4-недельный блок давности (недели 16–19 — блок 1 …).
+                    -- Перф 19.10 (результат тот же): пишутся только клиенты с покупками в канале и «до» > 0 (SEG > 0, X > 0) — дальше
+                    -- читаются только они (выбросы, слои, выравнивание); «Без покупок до» = список без фрода − записанные (шаг численности).
+                    -- У офлайн-акций это убирает почти всю онлайн-базу — #ce_pc примерно вдвое меньше
                     INSERT INTO #ce_pc WITH (TABLOCK) (ID_PROMO, ID_CONTACT, CG, SEG, UNIT, X, Y1, Y3, A1, A3
                                                      , B_IN, B_IN1, B_IN3, B_AFT, B_AFT1, B_AFT3, CY, KY, CA, KA, P)
                     SELECT l.ID_PROMO * 10 + b.B, l.ID_CONTACT, l.CG, g.SEG
@@ -1400,18 +1444,17 @@ BEGIN
                                              WHEN 1 THEN (d.TEN - 1) / 7 + 1
                                              WHEN 5 THEN (d.REC - 1) / 7 + 1
                                              WHEN 6 THEN ((d.REC - 1) / 7 + 1 - 16) / 4 + 1 END
-                         , X = CASE WHEN g.SEG IN (1, 2) THEN isnull(CAST(v.X42 AS float), 0e0)   -- ТО канала за 42 дня до старта
-                                    WHEN g.SEG IN (5, 6) THEN isnull(s.X_ALL, 0e0)                -- вся история канала по дату снимка
-                                                              + isnull(CAST(v.XG AS float), 0e0)  -- + чеки канала после снимка до старта
-                                    ELSE 0e0 END
+                         , X = xv.X
                          -- ТО и покупки периода — только в канале базы (в колонках офлайна; онлайн-колонки нулевые)
                          , isnull(v.YB, 0), 0, isnull(v.AB, 0), 0
                          , isnull(v.BI, 0), isnull(v.BI, 0), 0
                          , isnull(v.BA, 0), isnull(v.BA, 0), 0
                          , isnull(CAST(v.CB AS float), 0e0), isnull(CAST(v.KB AS float), 0e0)
                          , isnull(CAST(v.CAB AS float), 0e0), isnull(CAST(v.KAB AS float), 0e0)
-                         -- ТО недели последней покупки в канале базы (неделя давности; Спящие — по снимкам, ниже)
-                         , P = CASE WHEN g.SEG IN (1, 2, 5) THEN CAST(CASE (d.REC - 1) / 7 + 1 WHEN 1 THEN CASE b.B WHEN 1 THEN a.W1_1 ELSE a.W1_3 END WHEN 2 THEN CASE b.B WHEN 1 THEN a.W2_1 ELSE a.W2_3 END WHEN 3 THEN CASE b.B WHEN 1 THEN a.W3_1 ELSE a.W3_3 END WHEN 4 THEN CASE b.B WHEN 1 THEN a.W4_1 ELSE a.W4_3 END WHEN 5 THEN CASE b.B WHEN 1 THEN a.W5_1 ELSE a.W5_3 END WHEN 6 THEN CASE b.B WHEN 1 THEN a.W6_1 ELSE a.W6_3 END WHEN 7 THEN CASE b.B WHEN 1 THEN a.W7_1 ELSE a.W7_3 END WHEN 8 THEN CASE b.B WHEN 1 THEN a.W8_1 ELSE a.W8_3 END WHEN 9 THEN CASE b.B WHEN 1 THEN a.W9_1 ELSE a.W9_3 END WHEN 10 THEN CASE b.B WHEN 1 THEN a.W10_1 ELSE a.W10_3 END WHEN 11 THEN CASE b.B WHEN 1 THEN a.W11_1 ELSE a.W11_3 END WHEN 12 THEN CASE b.B WHEN 1 THEN a.W12_1 ELSE a.W12_3 END WHEN 13 THEN CASE b.B WHEN 1 THEN a.W13_1 ELSE a.W13_3 END WHEN 14 THEN CASE b.B WHEN 1 THEN a.W14_1 ELSE a.W14_3 END WHEN 15 THEN CASE b.B WHEN 1 THEN a.W15_1 ELSE a.W15_3 END END AS float) END
+                         -- ТО недели последней покупки в канале базы (неделя давности; Спящие — по снимкам, ниже). Перф 19.10: неделя
+                         -- выбрана в шаге 5 (P1 / P3 = ТО недели последней покупки офлайн / онлайн); у Активных, Новых и Оттока последняя
+                         -- покупка — из окна чеков (LAST_OFF = LW), поэтому неделя та же, что (REC − 1) / 7 + 1
+                         , P = CASE WHEN g.SEG IN (1, 2, 5) THEN CAST(CASE b.B WHEN 1 THEN a.P1 ELSE a.P3 END AS float) END
                     FROM #ce_list AS l
                          JOIN #ce_pr AS p ON p.ID_PROMO = l.ID_PROMO
                          CROSS JOIN (VALUES (cast(1 AS tinyint)), (cast(3 AS tinyint))) AS b (B)   -- база: 1 офлайн, 3 онлайн
@@ -1442,8 +1485,13 @@ BEGIN
                                                         WHEN d.REC <= @pre_days                        THEN 2   -- Активные
                                                         WHEN d.REC <= @hist_days                       THEN 5   -- Отток
                                                         ELSE 6 END) AS g                                        -- Спящие
+                         CROSS APPLY (SELECT X = CASE WHEN g.SEG IN (1, 2) THEN isnull(CAST(v.X42 AS float), 0e0)   -- ТО канала за 42 дня до старта
+                                                      WHEN g.SEG IN (5, 6) THEN isnull(s.X_ALL, 0e0)                -- вся история канала по дату снимка
+                                                                                + isnull(CAST(v.XG AS float), 0e0)  -- + чеки канала после снимка до старта
+                                                      ELSE 0e0 END) AS xv
                     WHERE l.IS_FRAUD = 0
-                      AND (p.ORG = 1 OR b.B = 3);                                -- у онлайн-акций 110xxx — только онлайн-база
+                      AND (p.ORG = 1 OR b.B = 3)                                 -- у онлайн-акций 110xxx — только онлайн-база
+                      AND g.SEG > 0 AND xv.X > 0;                                -- перф 19.10: остальные — только в счётчике «Без покупок до»
 
                     -- ---------- 7. Выбросы: граница G = exp(m + z·s) по ln, по акции и сегменту ----------
                     --   «до» — по всем в оценке (ЦГ и КГ: до акции группы одинаковы), клиент за границей исключается;
@@ -1580,14 +1628,34 @@ BEGIN
 
                     -- ---------- 8. Слои — недели давности без слияния (решение 19.10; у Новых — недели стажа, у Спящих — 4-недельные
                     --            блоки); неделя, где в оценке меньше 30 клиентов КГ, не сравнивается («не с кем сравнить») ----------
-                    INSERT INTO #ce_lw (RN, ID_PROMO, SEG, UNIT, N1)
-                    SELECT ROW_NUMBER() OVER (ORDER BY c.ID_PROMO, c.SEG, c.UNIT), c.ID_PROMO, c.SEG, c.UNIT
-                         , sum(CASE WHEN c.CG = 1 THEN 1 ELSE 0 END)
+                    -- ---------- 8а. ЦГ и КГ в неделе — по интервалам суммы покупок «до» (решения 19.10): шкала dbo.I_INTERVALS_BUDGET_100
+                    --            (100 ₽) у Активных и Новых, dbo.I_INTERVALS_BUDGET_500 (500 ₽) у Оттока и Спящих («до» — вся история);
+                    --            клиент — в первый интервал, чей FINISH_SUM не меньше его суммы; соседние интервалы сливаются, пока в
+                    --            объединённом нет 100 клиентов КГ. Ячейка расчёта = неделя × интервал: ЦГ сравнивается с КГ той же суммы
+                    --            «до», никто не удаляется. Неделя меньше 30 КГ и интервал без ЦГ или КГ — «не с кем сравнить» ----------
+                    -- перф 19.10 (результат тот же): клиенты в оценке — один проход #ce_pc с исключением выбросов, слой = неделя (UNIT;
+                    --   #ce_lmap — тождественное отображение UNIT → UNIT, джойн с ним не нужен); недели #ce_lw — из #ce_ev, а не вторым
+                    --   проходом #ce_pc. Интервал суммы «до» — равенством по корзине шкалы #ce_ivb вместо OUTER APPLY TOP (1) на каждого
+                    --   клиента: в корзине ⌊X / ширина⌋ — все интервалы, которые её пересекают, условие LO < X ≤ HI оставляет ровно тот,
+                    --   что дал бы TOP (1) … WHERE FINISH_SUM >= X ORDER BY FINISH_SUM, ID_INTERVAL; X выше шкалы — последний интервал
+                    INSERT INTO #ce_ev WITH (TABLOCK) (ID_PROMO, ID_CONTACT, SEG, CG, RL, IV)
+                    SELECT c.ID_PROMO, c.ID_CONTACT, c.SEG, c.CG, c.UNIT
+                         , isnull(iv.ID_INTERVAL, CASE WHEN c.SEG IN (5, 6) THEN @iv_last2 ELSE @iv_last1 END)
                     FROM #ce_pc AS c
+                         CROSS APPLY (SELECT SC = CAST(CASE WHEN c.SEG IN (5, 6) THEN 2 ELSE 1 END AS tinyint)) AS s
+                         CROSS APPLY (SELECT B = CASE WHEN c.X > CASE s.SC WHEN 2 THEN @ivmax2 ELSE @ivmax1 END THEN CAST(-1 AS bigint)
+                                                      ELSE CAST(floor(c.X / CASE s.SC WHEN 2 THEN @bw2 ELSE @bw1 END) AS bigint) END) AS b
+                         LEFT JOIN #ce_ivb AS iv ON iv.SC = s.SC AND iv.B = b.B
+                                                AND (iv.LO IS NULL OR c.X > iv.LO) AND c.X <= iv.HI
                     WHERE c.SEG > 0 AND c.X > 0
                       AND NOT EXISTS (SELECT 1 FROM #ce_xpre  AS x WHERE x.ID_PROMO = c.ID_PROMO AND x.ID_CONTACT = c.ID_CONTACT)
-                      AND NOT EXISTS (SELECT 1 FROM #ce_xdrop AS x WHERE x.ID_PROMO = c.ID_PROMO AND x.ID_CONTACT = c.ID_CONTACT)
-                    GROUP BY c.ID_PROMO, c.SEG, c.UNIT;
+                      AND NOT EXISTS (SELECT 1 FROM #ce_xdrop AS x WHERE x.ID_PROMO = c.ID_PROMO AND x.ID_CONTACT = c.ID_CONTACT);
+
+                    INSERT INTO #ce_lw (RN, ID_PROMO, SEG, UNIT, N1)
+                    SELECT ROW_NUMBER() OVER (ORDER BY e.ID_PROMO, e.SEG, e.RL), e.ID_PROMO, e.SEG, e.RL
+                         , sum(CASE WHEN e.CG = 1 THEN 1 ELSE 0 END)
+                    FROM #ce_ev AS e
+                    GROUP BY e.ID_PROMO, e.SEG, e.RL;
 
                     INSERT INTO #ce_lmap (ID_PROMO, SEG, UNIT, LAYER)
                     SELECT ID_PROMO, SEG, UNIT, UNIT FROM #ce_lw;
@@ -1600,27 +1668,6 @@ BEGIN
                     FROM #ce_lmap
                     GROUP BY ID_PROMO, SEG, LAYER;
 
-                    -- ---------- 8а. Выравнивание ЦГ и КГ в неделе по сумме покупок «до» (решения 19.10): интервалы суммы «до» —
-                    --            шкала dbo.I_INTERVALS_BUDGET_100 (шаг 100 ₽) у Активных и Новых, dbo.I_INTERVALS_BUDGET_500 (500 ₽) у Оттока и
-                    --            Спящих («до» — вся история); клиент — в первый интервал, чей FINISH_SUM не меньше его суммы; доля КГ в интервале = КГ / (ЦГ + КГ). Сравниваются интервалы, где есть ЦГ и не меньше
-                    --            30 клиентов КГ (соседние интервалы шкалы сливаются, пока в объединённом нет 30 КГ — решение 19.10);
-                    --            доля недели — минимальная доля КГ среди них, но не ниже @kg_share_min (3 %).
-                    --            В интервале с долей выше — случайно убираются лишние КГ, с долей ниже — лишние ЦГ («лишние ЦГ
-                    --            тоже убираются, если для них не нашлось КГ»); случайно и воспроизводимо — по MD5 номера клиента.
-                    --            Неделя меньше 30 КГ и интервал без ЦГ — «не с кем сравнить».
-                    --            Дальше слой = неделя: Доп ТО и показатели — на выровненном списке недели ----------
-                    INSERT INTO #ce_ev WITH (TABLOCK) (ID_PROMO, ID_CONTACT, SEG, CG, RL, IV)
-                    SELECT c.ID_PROMO, c.ID_CONTACT, c.SEG, c.CG, m.LAYER
-                         , isnull(iv.ID_INTERVAL, CASE WHEN c.SEG IN (5, 6) THEN @iv_last2 ELSE @iv_last1 END)
-                    FROM #ce_pc AS c
-                         JOIN #ce_lmap AS m ON m.ID_PROMO = c.ID_PROMO AND m.SEG = c.SEG AND m.UNIT = c.UNIT
-                         OUTER APPLY (SELECT TOP (1) t.ID_INTERVAL FROM #ce_ivt AS t
-                                      WHERE t.SC = CASE WHEN c.SEG IN (5, 6) THEN 2 ELSE 1 END AND t.FINISH_SUM >= c.X
-                                      ORDER BY t.FINISH_SUM, t.ID_INTERVAL) AS iv
-                    WHERE c.SEG > 0 AND c.X > 0
-                      AND NOT EXISTS (SELECT 1 FROM #ce_xpre  AS x WHERE x.ID_PROMO = c.ID_PROMO AND x.ID_CONTACT = c.ID_CONTACT)
-                      AND NOT EXISTS (SELECT 1 FROM #ce_xdrop AS x WHERE x.ID_PROMO = c.ID_PROMO AND x.ID_CONTACT = c.ID_CONTACT);
-
                     -- интервалы шкалы недели: ЦГ, КГ
                     INSERT INTO #ce_is0 (ID_PROMO, SEG, RL, IV, RN, N0, N1)
                     SELECT e.ID_PROMO, e.SEG, e.RL, e.IV, ROW_NUMBER() OVER (PARTITION BY e.ID_PROMO, e.SEG, e.RL ORDER BY e.IV)
@@ -1628,17 +1675,16 @@ BEGIN
                     FROM #ce_ev AS e
                     GROUP BY e.ID_PROMO, e.SEG, e.RL, e.IV;
 
-                    -- соседние интервалы шкалы сливаются, пока в объединённом нет 30 КГ (решение 19.10): по порядку шкалы группа
-                    -- закрывается на первом интервале, на котором в ней накопилось 30 КГ;
-                    -- хвост меньше 30 КГ в конце недели — с предыдущей группой
+                    -- соседние интервалы шкалы сливаются, пока в объединённом нет 100 КГ (решение 19.10): по порядку шкалы группа
+                    -- закрывается на первом интервале, на котором в ней накопилось 100 КГ; хвост меньше 100 КГ — с предыдущей
                     ;WITH r AS (
                         SELECT ID_PROMO, SEG, RL, RN, IV, GS = IV, ACC = N1
                         FROM #ce_is0
                         WHERE RN = 1
                         UNION ALL
                         SELECT o.ID_PROMO, o.SEG, o.RL, o.RN, o.IV
-                             , CASE WHEN r.ACC >= @layer_min_cg THEN o.IV ELSE r.GS END
-                             , CASE WHEN r.ACC >= @layer_min_cg THEN o.N1 ELSE r.ACC + o.N1 END
+                             , CASE WHEN r.ACC >= @iv_min_cg THEN o.IV ELSE r.GS END
+                             , CASE WHEN r.ACC >= @iv_min_cg THEN o.N1 ELSE r.ACC + o.N1 END
                         FROM r
                              JOIN #ce_is0 AS o ON o.ID_PROMO = r.ID_PROMO AND o.SEG = r.SEG AND o.RL = r.RL AND o.RN = r.RN + 1)
                     INSERT INTO #ce_ivm (ID_PROMO, SEG, RL, IV, G)
@@ -1655,7 +1701,7 @@ BEGIN
                                             WHERE i.ID_PROMO = v.ID_PROMO AND i.SEG = v.SEG AND i.RL = v.RL AND i.IV >= v.GL)
                                FROM (SELECT ID_PROMO, SEG, RL, GL = max(G) FROM #ce_ivm GROUP BY ID_PROMO, SEG, RL) AS v) AS t
                            ON t.ID_PROMO = m.ID_PROMO AND t.SEG = m.SEG AND t.RL = m.RL AND m.G = t.GL
-                    WHERE t.NL < @layer_min_cg AND t.GP IS NOT NULL;
+                    WHERE t.NL < @iv_min_cg AND t.GP IS NOT NULL;
 
                     -- интервалы сравнения: ЦГ, КГ, доля КГ, в сравнении или нет
                     INSERT INTO #ce_is (ID_PROMO, SEG, RL, IV, N0, N1, OK)
@@ -1664,66 +1710,30 @@ BEGIN
                          JOIN #ce_is0 AS i ON i.ID_PROMO = m.ID_PROMO AND i.SEG = m.SEG AND i.RL = m.RL AND i.IV = m.IV
                     GROUP BY m.ID_PROMO, m.SEG, m.RL, m.G;
 
+                    -- в сравнении — интервалы с ЦГ и КГ в неделе, где не меньше 30 КГ (неделя меньше 30 КГ — «не с кем сравнить»)
                     UPDATE i
                     SET OK = 1
                     FROM #ce_is AS i
                          JOIN #ce_lw AS w ON w.ID_PROMO = i.ID_PROMO AND w.SEG = i.SEG AND w.UNIT = i.RL
-                    WHERE w.N1 >= @layer_min_cg                                  -- в неделе не меньше 30 КГ
-                      AND i.N0 > 0 AND i.N1 >= @layer_min_cg;
+                    WHERE w.N1 >= @layer_min_cg
+                      AND i.N0 > 0 AND i.N1 > 0;
 
-                    -- доля недели — минимальная доля КГ среди интервалов в сравнении, не ниже 3 % (доля < 1: в интервале есть ЦГ)
-                    INSERT INTO #ce_ws (ID_PROMO, SEG, RL, SHARE)
-                    SELECT ID_PROMO, SEG, RL
-                         , CASE WHEN min(N1 * 1e0 / (N0 + N1)) < @kg_share_min THEN @kg_share_min ELSE min(N1 * 1e0 / (N0 + N1)) END
-                    FROM #ce_is
-                    WHERE OK = 1
-                    GROUP BY ID_PROMO, SEG, RL;
-
-                    -- сколько оставить: доля выше доли недели — КГ = ⌈доля · ЦГ / (1 − доля)⌉, ЦГ вся; ниже — ЦГ = ⌊КГ · (1 − доля) / доля⌋
-                    -- (не меньше 1), КГ вся
-                    UPDATE i
-                    SET KEEP1 = CASE WHEN i.N1 * 1e0 / (i.N0 + i.N1) > w.SHARE
-                                     THEN CASE WHEN CEILING(w.SHARE * i.N0 / (1e0 - w.SHARE) - 1e-9) > i.N1 THEN i.N1
-                                               ELSE CAST(CEILING(w.SHARE * i.N0 / (1e0 - w.SHARE) - 1e-9) AS int) END
-                                     ELSE i.N1 END
-                      , KEEP0 = CASE WHEN i.N1 * 1e0 / (i.N0 + i.N1) < w.SHARE
-                                     THEN CASE WHEN FLOOR(i.N1 * (1e0 - w.SHARE) / w.SHARE + 1e-9) >= i.N0 THEN i.N0
-                                               WHEN FLOOR(i.N1 * (1e0 - w.SHARE) / w.SHARE + 1e-9) < 1 THEN 1
-                                               ELSE CAST(FLOOR(i.N1 * (1e0 - w.SHARE) / w.SHARE + 1e-9) AS int) END
-                                     ELSE i.N0 END
-                    FROM #ce_is AS i
-                         JOIN #ce_ws AS w ON w.ID_PROMO = i.ID_PROMO AND w.SEG = i.SEG AND w.RL = i.RL
-                    WHERE i.OK = 1;
-
-                    -- выровненный список: в интервалах в сравнении — KEEP0 ЦГ и KEEP1 КГ; где убирать не нужно — все; кого оставить —
-                    -- случайно: порядок по MD5 от номера клиента и номера акции (воспроизводимо, не связан с номером карты)
-                    INSERT INTO #ce_kp WITH (TABLOCK) (ID_PROMO, ID_CONTACT, RL)
-                    SELECT e.ID_PROMO, e.ID_CONTACT, e.RL
+                    -- клиенты в сравнении — все ЦГ и КГ интервалов в сравнении (решение 19.10: никто не удаляется); ячейка
+                    -- расчёта = неделя × интервал: ЦГ интервала сравнивается с КГ того же интервала суммы «до»
+                    INSERT INTO #ce_kp WITH (TABLOCK) (ID_PROMO, ID_CONTACT, RL, LAYER)
+                    SELECT e.ID_PROMO, e.ID_CONTACT, e.RL, e.RL * 100000 + m.G
                     FROM #ce_ev AS e
                          JOIN #ce_ivm AS m ON m.ID_PROMO = e.ID_PROMO AND m.SEG = e.SEG AND m.RL = e.RL AND m.IV = e.IV
                          JOIN #ce_is AS i ON i.ID_PROMO = e.ID_PROMO AND i.SEG = e.SEG AND i.RL = e.RL AND i.IV = m.G
-                    WHERE i.OK = 1
-                      AND ((e.CG = 0 AND i.KEEP0 = i.N0) OR (e.CG = 1 AND i.KEEP1 = i.N1));
+                    WHERE i.OK = 1;
 
-                    INSERT INTO #ce_kp WITH (TABLOCK) (ID_PROMO, ID_CONTACT, RL)
-                    SELECT x.ID_PROMO, x.ID_CONTACT, x.RL
-                    FROM (SELECT e.ID_PROMO, e.ID_CONTACT, e.RL, KEEP = CASE e.CG WHEN 0 THEN i.KEEP0 ELSE i.KEEP1 END
-                               , RN = ROW_NUMBER() OVER (PARTITION BY e.ID_PROMO, e.SEG, e.RL, m.G, e.CG
-                                                         ORDER BY HASHBYTES('MD5', CONCAT(e.ID_CONTACT, '|', e.ID_PROMO / 10)), e.ID_CONTACT)
-                          FROM #ce_ev AS e
-                               JOIN #ce_ivm AS m ON m.ID_PROMO = e.ID_PROMO AND m.SEG = e.SEG AND m.RL = e.RL AND m.IV = e.IV
-                               JOIN #ce_is AS i ON i.ID_PROMO = e.ID_PROMO AND i.SEG = e.SEG AND i.RL = e.RL AND i.IV = m.G
-                          WHERE i.OK = 1
-                            AND ((e.CG = 0 AND i.KEEP0 < i.N0) OR (e.CG = 1 AND i.KEEP1 < i.N1))) AS x
-                    WHERE x.RN <= x.KEEP;
-
-                    -- неделя: клиентов ЦГ и КГ в оценке до выравнивания, интервалов в сравнении (для витрины и пересчёта на всю ЦГ)
+                    -- неделя: клиентов ЦГ и КГ в оценке, интервалов в сравнении (для витрины и пересчёта на всю ЦГ)
                     INSERT INTO #ce_wn (ID_PROMO, SEG, RL, N0ALL, N1ALL, IVS)
                     SELECT ID_PROMO, SEG, RL, sum(N0), sum(N1), sum(CASE WHEN OK = 1 THEN 1 ELSE 0 END)
                     FROM #ce_is
                     GROUP BY ID_PROMO, SEG, RL;
 
-                    -- Спящие выровненного списка: ТО месяца последней покупки = накопленный ТО до скидки по снимку на конец этого
+                    -- Спящие в сравнении: ТО месяца последней покупки = накопленный ТО до скидки по снимку на конец этого
                     -- месяца − на конец предыдущего (снимки I_CVM_CONTACT_DATA есть с 31.08.2025: раньше — без проверки)
                     -- (снимки датированы концом месяца — EOMONTH совпадает с REFERENCE_DATE)
                     INSERT INTO #ce_spk WITH (TABLOCK) (ID_PROMO, ID_CONTACT, ORG, M1, M0, FIRST_DATA)
@@ -1773,10 +1783,10 @@ BEGIN
                           AND a.XA >= isnull(b.XA, 0e0);
                     END
 
-                    -- клиенты выровненного списка со слоем-неделей; без «после» его ТО и покупки — нули (итого = в акцию)
+                    -- клиенты в сравнении с ячейкой (неделя × интервал суммы «до»); без «после» его ТО и покупки — нули (итого = в акцию)
                     INSERT INTO #ce_cl WITH (TABLOCK) (ID_PROMO, ID_CONTACT, SEG, LAYER, CG, AON, X, Y1, Y3, A1, A3
                                                      , B_IN, B_IN1, B_IN3, B_AFT, B_AFT1, B_AFT3, CY, KY, CA, KA, P)
-                    SELECT c.ID_PROMO, c.ID_CONTACT, c.SEG, k.RL, c.CG, p.AFTER_ON, c.X, c.Y1, c.Y3
+                    SELECT c.ID_PROMO, c.ID_CONTACT, c.SEG, k.LAYER, c.CG, p.AFTER_ON, c.X, c.Y1, c.Y3
                          , c.A1 * p.AFTER_ON, c.A3 * p.AFTER_ON
                          , c.B_IN, c.B_IN1, c.B_IN3, c.B_AFT * p.AFTER_ON, c.B_AFT1 * p.AFTER_ON, c.B_AFT3 * p.AFTER_ON
                          , c.CY, c.KY, c.CA * p.AFTER_ON, c.KA * p.AFTER_ON
@@ -1880,6 +1890,7 @@ BEGIN
                     SELECT ID_PROMO, SEG, LAYER, CG, count(*), sum(X - P), sum(P)
                     FROM #ce_cl
                     WHERE P IS NOT NULL
+                      AND X - P > 0                              -- как в основном расчёте: в проверку — клиенты с «до» > 0 (решение 19.10)
                     GROUP BY ID_PROMO, SEG, LAYER, CG;
 
                     INSERT INTO #ce_qu (ID_PROMO, SEG, LAYER, N0, SQ0, SP0, N1, SQ1, SP1, R, EBAR0)
@@ -1895,7 +1906,7 @@ BEGIN
                          , sum(square(c.P - u.R * (c.X - c.P) - CASE WHEN c.CG = 0 THEN u.EBAR0 ELSE 0e0 END))
                     FROM #ce_cl AS c
                          JOIN #ce_qu AS u ON u.ID_PROMO = c.ID_PROMO AND u.SEG = c.SEG AND u.LAYER = c.LAYER
-                    WHERE c.P IS NOT NULL AND u.R IS NOT NULL
+                    WHERE c.P IS NOT NULL AND c.X - c.P > 0 AND u.R IS NOT NULL
                     GROUP BY c.ID_PROMO, c.SEG, c.LAYER, c.CG;
 
                     INSERT INTO #ce_qt (ID_PROMO, CH, PS, PSE2)
@@ -1917,14 +1928,17 @@ BEGIN
                     GROUP BY ID_PROMO;
 
                     -- Доп ТО на всю ЦГ (решение 19.10: «эффект на одного клиента выводим для всех клиентов ЦГ»): у недели с оценкой —
-                    -- Доп ТО на клиента недели × все клиенты ЦГ недели в оценке (до выравнивания); у недели без сравнения — Доп ТО
+                    -- Доп ТО на клиента недели × все клиенты ЦГ недели в оценке; у недели без сравнения — Доп ТО
                     -- на клиента сегмента × её клиенты ЦГ; сегменты вне итога не входят
                     INSERT INTO #ce_all (ID_PROMO, PER, ADDALL)
                     SELECT q.ID_PROMO, q.PER, sum(q.V)
-                    FROM (SELECT r.ID_PROMO, r.PER, V = r.ADD_A * wn.N0ALL / cast(r.N0 AS float)
-                          FROM #ce_res AS r
-                               JOIN #ce_wn AS wn ON wn.ID_PROMO = r.ID_PROMO AND wn.SEG = r.SEG AND wn.RL = r.LAYER
-                          WHERE r.CH = 1 AND r.IN_TOTAL = 1 AND r.EXPV IS NOT NULL AND r.N0 > 0
+                    FROM (SELECT w.ID_PROMO, w.PER, V = w.ADDW * wn.N0ALL / w.N0W
+                          FROM (SELECT r.ID_PROMO, r.SEG, RL = r.LAYER / 100000, r.PER
+                                     , ADDW = sum(r.ADD_A), N0W = sum(cast(r.N0 AS float))
+                                FROM #ce_res AS r
+                                WHERE r.CH = 1 AND r.IN_TOTAL = 1 AND r.EXPV IS NOT NULL AND r.N0 > 0
+                                GROUP BY r.ID_PROMO, r.SEG, r.LAYER / 100000, r.PER) AS w
+                               JOIN #ce_wn AS wn ON wn.ID_PROMO = w.ID_PROMO AND wn.SEG = w.SEG AND wn.RL = w.RL
                           UNION ALL
                           SELECT wn.ID_PROMO, sg.PER, wn.N0ALL * sg.APC
                           FROM #ce_wn AS wn
@@ -1933,7 +1947,7 @@ BEGIN
                                      WHERE CH = 1 AND IN_TOTAL = 1 AND EXPV IS NOT NULL AND N0 > 0
                                      GROUP BY ID_PROMO, SEG, PER) AS sg ON sg.ID_PROMO = wn.ID_PROMO AND sg.SEG = wn.SEG
                           WHERE NOT EXISTS (SELECT 1 FROM #ce_res AS r
-                                            WHERE r.ID_PROMO = wn.ID_PROMO AND r.SEG = wn.SEG AND r.LAYER = wn.RL AND r.PER = sg.PER
+                                            WHERE r.ID_PROMO = wn.ID_PROMO AND r.SEG = wn.SEG AND r.LAYER / 100000 = wn.RL AND r.PER = sg.PER
                                               AND r.CH = 1 AND r.IN_TOTAL = 1 AND r.EXPV IS NOT NULL AND r.N0 > 0)) AS q
                     GROUP BY q.ID_PROMO, q.PER;
 
@@ -1962,7 +1976,7 @@ BEGIN
                                        , NE1, SY01, EY1, SC01, EC1, SK01, EK1, NE2, SY02, EY2, SC02, EC2, SK02, EK2
                                        , NB1, EB1, KB1, NB2, EB2, KB2, ALL1, ALL2, ALL3)
                     SELECT r.ID_PROMO / 10, cast(r.ID_PROMO % 10 AS tinyint)
-                         , sum(CASE WHEN r.PER = 1 THEN 1 ELSE 0 END)
+                         , count(DISTINCT CASE WHEN r.PER = 1 THEN r.SEG * 1000 + r.LAYER / 100000 END)   -- слоёв = недель (ячейки — их части)
                          , sum(CASE WHEN r.PER = 1 THEN r.ADD_A END)
                          , sum(CASE WHEN r.PER = 1 THEN r.SE2 END)
                          , CASE WHEN sum(CASE WHEN r.PER = 1 AND r.ADD_REG IS NULL THEN 1 ELSE 0 END) = 0
@@ -2050,14 +2064,16 @@ BEGIN
                     WHERE t.CH IN (1, 3)
                     GROUP BY t.ID_PROMO;
 
-                    -- численность: весь список = фрод + без «до» + выбросы + не с кем сравнить + убрано при выравнивании (ЦГ и КГ)
+                    -- численность: весь список = фрод + без «до» + выбросы + не с кем сравнить (+ убрано при выравнивании — с 19.10 0)
                     -- + сегменты без оценки + в оценке
                     INSERT INTO #ce_cnt (ID_PROMO, CH, L0, L1, F0, F1, D0, D1, O0, O1, U0, U1, I0, I1, U_SEGS, P0, P1, R0, R1)
                     SELECT v.REAL_ID, v.BASIS
                          , isnull(l.L0, 0), isnull(l.L1, 0), isnull(l.F0, 0), isnull(l.F1, 0)
-                         , isnull(c.D0, 0), isnull(c.D1, 0), isnull(c.O0, 0), isnull(c.O1, 0)
+                         -- без покупок до = список без фрода − в #ce_pc (там только SEG > 0 и X > 0; перф 19.10)
+                         , isnull(l.L0, 0) - isnull(l.F0, 0) - isnull(c.E0, 0), isnull(l.L1, 0) - isnull(l.F1, 0) - isnull(c.E1, 0)
+                         , isnull(c.O0, 0), isnull(c.O1, 0)
                          , isnull(g.U0, 0), isnull(g.U1, 0), isnull(g.I0, 0), isnull(g.I1, 0), g.U_SEGS
-                         , isnull(np.P0, 0), isnull(np.P1, 0), isnull(np.R0, 0), isnull(np.R1, 0)
+                         , isnull(np.P0, 0), isnull(np.P1, 0), 0, 0                -- убрано при выравнивании: с 19.10 никто не удаляется
                     FROM #ce_vp AS v
                          JOIN #ce_pr AS p ON p.ID_PROMO = v.REAL_ID
                          LEFT JOIN (SELECT ID_PROMO
@@ -2068,11 +2084,11 @@ BEGIN
                                     FROM #ce_list
                                     GROUP BY ID_PROMO) AS l ON l.ID_PROMO = v.REAL_ID
                          LEFT JOIN (SELECT x.ID_PROMO
-                                         , D0 = sum(CASE WHEN x.CG = 0 AND (x.SEG = 0 OR x.X <= 0) THEN 1 ELSE 0 END)
-                                         , D1 = sum(CASE WHEN x.CG = 1 AND (x.SEG = 0 OR x.X <= 0) THEN 1 ELSE 0 END)
-                                         , O0 = sum(CASE WHEN x.CG = 0 AND x.SEG > 0 AND x.X > 0
+                                         , E0 = sum(CASE WHEN x.CG = 0 THEN 1 ELSE 0 END)
+                                         , E1 = sum(CASE WHEN x.CG = 1 THEN 1 ELSE 0 END)
+                                         , O0 = sum(CASE WHEN x.CG = 0
                                                           AND (xp.ID_CONTACT IS NOT NULL OR xd.ID_CONTACT IS NOT NULL) THEN 1 ELSE 0 END)
-                                         , O1 = sum(CASE WHEN x.CG = 1 AND x.SEG > 0 AND x.X > 0
+                                         , O1 = sum(CASE WHEN x.CG = 1
                                                           AND (xp.ID_CONTACT IS NOT NULL OR xd.ID_CONTACT IS NOT NULL) THEN 1 ELSE 0 END)
                                     FROM #ce_pc AS x
                                          LEFT JOIN #ce_xpre  AS xp ON xp.ID_PROMO = x.ID_PROMO AND xp.ID_CONTACT = x.ID_CONTACT
@@ -2092,12 +2108,9 @@ BEGIN
                          LEFT JOIN (SELECT e.ID_PROMO
                                          , P0 = sum(CASE WHEN e.CG = 0 AND i.OK = 0 THEN 1 ELSE 0 END)
                                          , P1 = sum(CASE WHEN e.CG = 1 AND i.OK = 0 THEN 1 ELSE 0 END)
-                                         , R0 = sum(CASE WHEN e.CG = 0 AND i.OK = 1 AND k.ID_CONTACT IS NULL THEN 1 ELSE 0 END)
-                                         , R1 = sum(CASE WHEN e.CG = 1 AND i.OK = 1 AND k.ID_CONTACT IS NULL THEN 1 ELSE 0 END)
                                     FROM #ce_ev AS e
                                          JOIN #ce_ivm AS m ON m.ID_PROMO = e.ID_PROMO AND m.SEG = e.SEG AND m.RL = e.RL AND m.IV = e.IV
                                          JOIN #ce_is AS i ON i.ID_PROMO = e.ID_PROMO AND i.SEG = e.SEG AND i.RL = e.RL AND i.IV = m.G
-                                         LEFT JOIN #ce_kp AS k ON k.ID_PROMO = e.ID_PROMO AND k.ID_CONTACT = e.ID_CONTACT
                                     GROUP BY e.ID_PROMO) AS np ON np.ID_PROMO = v.ID_PROMO;
 
                     -- строка «Все каналы» — численность по базе канала акции
@@ -2412,7 +2425,7 @@ BEGIN
                             , EXP_CHECKS_TG, EXP_SKU_TG, CLIENTS_TG_ALL, CLIENTS_CG_ALL, KG_SHARE, INTERVALS, IN_TOTAL, PRELIM, CALC_DT)
                         SELECT @idc, @pid, p.START_DATE, p.FINISH_DATE, p.ORG, r.SEG
                              , CASE r.SEG WHEN 2 THEN N'Активные' WHEN 1 THEN N'Новые' WHEN 5 THEN N'Отток' ELSE N'Спящие' END
-                             , cast(r.LAYER AS smallint)                                                               -- неделя
+                             , cast(DENSE_RANK() OVER (PARTITION BY r.ID_PROMO, r.SEG ORDER BY r.LAYER) AS smallint)   -- ячейка: неделя × интервал по порядку
                              , CASE r.SEG WHEN 1 THEN N'недели стажа' WHEN 6 THEN N'4-недельные блоки давности' ELSE N'недели давности' END
                              , w.WEEK_FROM, w.WEEK_TO
                              , CASE WHEN r.SEG IN (1, 2) THEN N'ТО за 42 дня до старта' ELSE N'ТО до скидки за всю историю до старта' END
@@ -2430,13 +2443,15 @@ BEGIN
                              , cast(round(r.SC0, 0) AS int), cast(round(r.SC1, 0) AS int)
                              , cast(round(r.SK0, 3) AS decimal(19, 3)), cast(round(r.SK1, 3) AS decimal(19, 3))
                              , cast(round(r.EXPC, 3) AS decimal(19, 3)), cast(round(r.EXPK, 3) AS decimal(19, 3))
-                             , wn.N0ALL, wn.N1ALL, cast(round(100e0 * ws.SHARE, 3) AS decimal(9, 3)), wn.IVS
+                             , wn.N0ALL, wn.N1ALL
+                             , cast(round(100e0 * r.N1 / nullif(r.N0 + r.N1, 0), 3) AS decimal(9, 3))           -- доля КГ в ячейке, %
+                             , (SELECT count(*) FROM #ce_ivm AS m
+                                WHERE m.ID_PROMO = r.ID_PROMO AND m.SEG = r.SEG AND m.RL = r.LAYER / 100000 AND m.G = r.LAYER % 100000)
                              , r.IN_TOTAL, p.PRELIM, @now
                         FROM #ce_res AS r
                              JOIN #ce_pr   AS p ON p.ID_PROMO = @pid
-                             JOIN #ce_lrng AS w ON w.ID_PROMO = r.ID_PROMO AND w.SEG = r.SEG AND w.LAYER = r.LAYER
-                             LEFT JOIN #ce_wn AS wn ON wn.ID_PROMO = r.ID_PROMO AND wn.SEG = r.SEG AND wn.RL = r.LAYER
-                             LEFT JOIN #ce_ws AS ws ON ws.ID_PROMO = r.ID_PROMO AND ws.SEG = r.SEG AND ws.RL = r.LAYER
+                             JOIN #ce_lrng AS w ON w.ID_PROMO = r.ID_PROMO AND w.SEG = r.SEG AND w.LAYER = r.LAYER / 100000
+                             LEFT JOIN #ce_wn AS wn ON wn.ID_PROMO = r.ID_PROMO AND wn.SEG = r.SEG AND wn.RL = r.LAYER / 100000
                         WHERE r.ID_PROMO IN (@pid * 10 + 1, @pid * 10 + 3)   -- акция на базе офлайна и онлайна
                           AND r.CH = 1;                                      -- ТО периода канала базы
 
