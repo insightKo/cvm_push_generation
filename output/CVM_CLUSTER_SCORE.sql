@@ -11,6 +11,8 @@
 --                                  кластерный ключ (ID_COMPANY, ID_ORGANIZATION, CLUSTER, ID_PRODUCT).
 --                                  Обе таблицы пересчитываются целиком каждый день одной транзакцией (очистка + вставка);
 --                                  пустой расчёт таблицы не очищает (ошибка, остаются вчерашние скоры).
+--                                  Уже есть без колонок FREQ_INDEX_LO / CHECK_INDEX_LO — колонки добавляются (ALTER TABLE ADD),
+--                                  строки не трогаются; следующий расчёт их заполнит.
 --   dbo.cluster_score              создаётся/заменяется: расчёт за 6 недель до даты I_CVM_CONTACT.
 --   msdb: задание «MCI Regular update» — шаг CLUSTER_SCORE вставляется сразу после PRODUCT_SCORE_REGION; следующие шаги
 --         сдвигаются на 1, переходы msdb пересчитывает сам; при успехе и при ошибке — следующий шаг.
@@ -41,6 +43,14 @@
 --     CHECK_INDEX — так же по CHECK_SCORE. 1,35 — на 35 % выше базы, 0,80 — на 20 % ниже. У строк базы индекс = 1.
 --     Общий уровень кластера входит во все его индексы (у частых кластеров трафик выше по всему) — категории и товары
 --     сравнивать по индексу ВНУТРИ кластера.
+--   FREQ_INDEX_LO / CHECK_INDEX_LO — нижняя граница 95 % доверительного интервала индекса (решение Елены 20.10.2026,
+--     по ней сортируются топы портрета): категория с горсткой покупателей даёт широкий интервал и уходит вниз сама,
+--     без порога по числу покупателей. Трафик: скор кластера — среднее по клиентам кластера (у не покупавших 0) величины
+--     «FREQ_SCORE клиента × его строк (у категорий — чеков) с товаром»; граница = среднее − 1,96 × стандартная ошибка
+--     среднего, делённая на скор базы. Чек: средняя сумма чека с товаром − 1,96 × стандартная ошибка ПО ПОКУПАТЕЛЯМ
+--     (чеки одного клиента — одна единица: десять похожих чеков одного человека не сужают интервал), делённая на чек-скор
+--     базы; один покупатель — граница NULL (разброс не определён), в топе по убыванию такая строка внизу. Разброс базы
+--     не учитывается — база в 8–14 раз больше кластера; у строк самой базы (CLUSTER = 0) нижняя граница = 1.
 --   FREQ_RANK / CHECK_RANK — место в кластере 0–100 по скору (100 — лучшая категория/товар кластера), PERCENT_RANK.
 --   EXT_CODES — коды ДИКСИ, которые целиком в категории; EXT_CODES_PART — коды, товары которых делятся между нашими
 --     категориями по словам или поштучно (для условий акции — проверять состав).
@@ -66,6 +76,8 @@ BEGIN
         , CHECK_SCORE       float          NULL         -- чек-скор
         , FREQ_INDEX        float          NULL         -- трафик-скор кластера ÷ трафик-скор базы
         , CHECK_INDEX       float          NULL         -- чек-скор кластера ÷ чек-скор базы
+        , FREQ_INDEX_LO     float          NULL         -- нижняя граница 95 % интервала FREQ_INDEX
+        , CHECK_INDEX_LO    float          NULL         -- нижняя граница 95 % интервала CHECK_INDEX
         , FREQ_RANK         tinyint        NULL         -- место в кластере по трафик-скору, 0–100
         , CHECK_RANK        tinyint        NULL         -- место в кластере по чек-скору, 0–100
         , CONTACTS          int            NULL
@@ -96,6 +108,8 @@ BEGIN
         , CHECK_SCORE       float          NULL
         , FREQ_INDEX        float          NULL
         , CHECK_INDEX       float          NULL
+        , FREQ_INDEX_LO     float          NULL
+        , CHECK_INDEX_LO    float          NULL
         , FREQ_RANK         tinyint        NULL
         , CHECK_RANK        tinyint        NULL
         , CONTACTS          int            NULL
@@ -109,6 +123,13 @@ BEGIN
         , CONSTRAINT PK_I_CLUSTER_PRODUCT_SCORE PRIMARY KEY CLUSTERED (ID_COMPANY, ID_ORGANIZATION, CLUSTER, ID_PRODUCT)
     );
 END
+GO
+
+-- Таблицы первой редакции (19.10.2026) — без нижних границ индекса: добавить колонки
+IF COL_LENGTH(N'dbo.I_CLUSTER_CATEGORY_SCORE', N'FREQ_INDEX_LO') IS NULL
+    ALTER TABLE dbo.I_CLUSTER_CATEGORY_SCORE ADD FREQ_INDEX_LO float NULL, CHECK_INDEX_LO float NULL;
+IF COL_LENGTH(N'dbo.I_CLUSTER_PRODUCT_SCORE', N'FREQ_INDEX_LO') IS NULL
+    ALTER TABLE dbo.I_CLUSTER_PRODUCT_SCORE ADD FREQ_INDEX_LO float NULL, CHECK_INDEX_LO float NULL;
 GO
 
 -- ============================== 2. РАСЧЁТ ==============================
@@ -231,55 +252,73 @@ BEGIN
     GROUP BY a.ID_CHECK, a.ID_CONTACT, a.ID_PRODUCT
     OPTION (RECOMPILE);
 
-    -- 2.6 Товары: один проход по #line с группой «кластер» (клиенты без кластера — группа NULL); вся база (CLUSTER = 0) —
-    --     сумма групп. Клиент ровно в одной группе, поэтому разных клиентов базы = сумма по группам (без второго
-    --     COUNT(DISTINCT) и без спула GROUPING SETS по всей #line). Средний чек — как AVG: строки без суммы чека не считаются.
-    SELECT l.CLUSTER, l.ID_PRODUCT,
-           ID_CVM_CATEGORY = MAX(l.ID_CVM_CATEGORY),
-           FREQ_SUM  = SUM(l.N_LINES * l.FREQ_SCORE),
-           CHK_SUM   = SUM(l.N_LINES * l.CHECK_SUM),
-           CHK_N     = SUM(CASE WHEN l.CHECK_SUM IS NOT NULL THEN l.N_LINES END),
-           CONTACTS  = COUNT(DISTINCT l.ID_CONTACT),
-           CHECKS    = COUNT(*)
+    -- 2.6 Товары: сначала клиент × товар (Y = FREQ_SCORE клиента × его строк товара — слагаемое трафик-скора; суммы и
+    --     квадраты сумм чеков — для разброса чек-скора), потом кластер × товар; клиенты без кластера — группа NULL. Вся база
+    --     (CLUSTER = 0) — сумма групп: клиент ровно в одной группе, суммы и квадраты складываются точно. Средний чек — как AVG:
+    --     строки без суммы чека не считаются.
+    SELECT c.CLUSTER, c.ID_PRODUCT,
+           ID_CVM_CATEGORY = MAX(c.ID_CVM_CATEGORY),
+           FREQ_SUM = SUM(c.Y), FREQ_SQ = SUM(c.Y * c.Y),
+           CHK_SUM  = SUM(c.CHK_SUM), CHK_N = SUM(c.CHK_N),
+           CHK_S2   = SUM(c.CHK_SUM * c.CHK_SUM), CHK_SN = SUM(c.CHK_SUM * c.CHK_N), CHK_N2 = SUM(c.CHK_N * c.CHK_N),
+           CHK_K    = COUNT(c.CHK_SUM),
+           CONTACTS = COUNT(*), CHECKS = SUM(c.CHECKS)
     INTO #pg
-    FROM #line AS l
-    GROUP BY l.CLUSTER, l.ID_PRODUCT;
+    FROM (SELECT l.CLUSTER, l.ID_PRODUCT, l.ID_CONTACT,
+                 ID_CVM_CATEGORY = MAX(l.ID_CVM_CATEGORY),
+                 Y       = SUM(l.N_LINES * l.FREQ_SCORE),
+                 CHK_SUM = SUM(l.N_LINES * l.CHECK_SUM),
+                 CHK_N   = CAST(SUM(CASE WHEN l.CHECK_SUM IS NOT NULL THEN l.N_LINES END) AS float),
+                 CHECKS  = COUNT(*)
+          FROM #line AS l
+          GROUP BY l.CLUSTER, l.ID_PRODUCT, l.ID_CONTACT) AS c
+    GROUP BY c.CLUSTER, c.ID_PRODUCT;
 
-    SELECT g.CLUSTER, g.ID_PRODUCT, g.ID_CVM_CATEGORY, g.FREQ_SUM, CHECK_SCORE = g.CHK_SUM / NULLIF(g.CHK_N, 0) / 10000,
-           g.CONTACTS, g.CHECKS
+    SELECT g.CLUSTER, g.ID_PRODUCT, g.ID_CVM_CATEGORY, g.FREQ_SUM, g.FREQ_SQ, g.CHK_SUM, g.CHK_N,
+           g.CHK_S2, g.CHK_SN, g.CHK_N2, g.CHK_K,
+           CHECK_SCORE = g.CHK_SUM / NULLIF(g.CHK_N, 0) / 10000, g.CONTACTS, g.CHECKS
     INTO #pres
     FROM #pg AS g
     WHERE g.CLUSTER IS NOT NULL
     UNION ALL
-    SELECT CAST(0 AS tinyint), g.ID_PRODUCT, MAX(g.ID_CVM_CATEGORY), SUM(g.FREQ_SUM), SUM(g.CHK_SUM) / NULLIF(SUM(g.CHK_N), 0) / 10000,
-           SUM(g.CONTACTS), SUM(g.CHECKS)
+    SELECT CAST(0 AS tinyint), g.ID_PRODUCT, MAX(g.ID_CVM_CATEGORY), SUM(g.FREQ_SUM), SUM(g.FREQ_SQ), SUM(g.CHK_SUM),
+           SUM(g.CHK_N), SUM(g.CHK_S2), SUM(g.CHK_SN), SUM(g.CHK_N2), SUM(g.CHK_K),
+           SUM(g.CHK_SUM) / NULLIF(SUM(g.CHK_N), 0) / 10000, SUM(g.CONTACTS), SUM(g.CHECKS)
     FROM #pg AS g
     GROUP BY g.ID_PRODUCT;
 
-    -- 2.7 Категории: чек × категория один раз (подзапросом, без промежуточной таблицы на сотню миллионов строк);
-    --     база — сумма групп, как у товаров.
-    SELECT x.CLUSTER, x.ID_CVM_CATEGORY,
-           FREQ_SUM = SUM(x.FREQ_SCORE),
-           CHK_SUM  = SUM(x.CHECK_SUM),
-           CHK_N    = COUNT(x.CHECK_SUM),
-           CONTACTS = COUNT(DISTINCT x.ID_CONTACT),
-           CHECKS   = COUNT(*)
+    -- 2.7 Категории: чек × категория один раз (подзапросом, без промежуточной таблицы на сотню миллионов строк), потом
+    --     клиент × категория (Y = FREQ_SCORE клиента × его чеков с категорией), потом кластер × категория; база — сумма групп.
+    SELECT c.CLUSTER, c.ID_CVM_CATEGORY,
+           FREQ_SUM = SUM(c.Y), FREQ_SQ = SUM(c.Y * c.Y),
+           CHK_SUM  = SUM(c.CHK_SUM), CHK_N = SUM(c.CHK_N),
+           CHK_S2   = SUM(c.CHK_SUM * c.CHK_SUM), CHK_SN = SUM(c.CHK_SUM * c.CHK_N), CHK_N2 = SUM(c.CHK_N * c.CHK_N),
+           CHK_K    = COUNT(c.CHK_SUM),
+           CONTACTS = COUNT(*), CHECKS = SUM(c.CHECKS)
     INTO #cg
-    FROM (SELECT l.ID_CHECK, l.ID_CONTACT, l.ID_CVM_CATEGORY, CLUSTER = MAX(l.CLUSTER),
-                 FREQ_SCORE = MAX(l.FREQ_SCORE), CHECK_SUM = MAX(l.CHECK_SUM)
-          FROM #line AS l
-          WHERE l.ID_CVM_CATEGORY IS NOT NULL
-          GROUP BY l.ID_CHECK, l.ID_CONTACT, l.ID_CVM_CATEGORY) AS x
-    GROUP BY x.CLUSTER, x.ID_CVM_CATEGORY;
+    FROM (SELECT x.CLUSTER, x.ID_CVM_CATEGORY, x.ID_CONTACT,
+                 Y       = SUM(x.FREQ_SCORE),
+                 CHK_SUM = SUM(x.CHECK_SUM),
+                 CHK_N   = CAST(COUNT(x.CHECK_SUM) AS float),
+                 CHECKS  = COUNT(*)
+          FROM (SELECT l.ID_CHECK, l.ID_CONTACT, l.ID_CVM_CATEGORY, CLUSTER = MAX(l.CLUSTER),
+                       FREQ_SCORE = MAX(l.FREQ_SCORE), CHECK_SUM = MAX(l.CHECK_SUM)
+                FROM #line AS l
+                WHERE l.ID_CVM_CATEGORY IS NOT NULL
+                GROUP BY l.ID_CHECK, l.ID_CONTACT, l.ID_CVM_CATEGORY) AS x
+          GROUP BY x.CLUSTER, x.ID_CVM_CATEGORY, x.ID_CONTACT) AS c
+    GROUP BY c.CLUSTER, c.ID_CVM_CATEGORY;
 
-    SELECT g.CLUSTER, g.ID_CVM_CATEGORY, g.FREQ_SUM, CHECK_SCORE = g.CHK_SUM / NULLIF(g.CHK_N, 0) / 10000,
-           g.CONTACTS, g.CHECKS
+    SELECT g.CLUSTER, g.ID_CVM_CATEGORY, g.FREQ_SUM, g.FREQ_SQ, g.CHK_SUM, g.CHK_N,
+           g.CHK_S2, g.CHK_SN, g.CHK_N2, g.CHK_K,
+           CHECK_SCORE = g.CHK_SUM / NULLIF(g.CHK_N, 0) / 10000, g.CONTACTS, g.CHECKS
     INTO #cres
     FROM #cg AS g
     WHERE g.CLUSTER IS NOT NULL
     UNION ALL
-    SELECT CAST(0 AS tinyint), g.ID_CVM_CATEGORY, SUM(g.FREQ_SUM), SUM(g.CHK_SUM) / NULLIF(SUM(g.CHK_N), 0) / 10000,
-           SUM(g.CONTACTS), SUM(g.CHECKS)
+    SELECT CAST(0 AS tinyint), g.ID_CVM_CATEGORY, SUM(g.FREQ_SUM), SUM(g.FREQ_SQ), SUM(g.CHK_SUM), SUM(g.CHK_N),
+           SUM(g.CHK_S2), SUM(g.CHK_SN), SUM(g.CHK_N2), SUM(g.CHK_K),
+           SUM(g.CHK_SUM) / NULLIF(SUM(g.CHK_N), 0) / 10000, SUM(g.CONTACTS), SUM(g.CHECKS)
     FROM #cg AS g
     GROUP BY g.ID_CVM_CATEGORY;
 
@@ -312,16 +351,32 @@ BEGIN
 
         INSERT dbo.I_CLUSTER_CATEGORY_SCORE
               (ID_COMPANY, ID_ORGANIZATION, CLUSTER, CLUSTER_NAME, ID_CVM_CATEGORY, ID_CVM_GROUP, CATEGORY_NAME,
-               FREQ_SCORE, CHECK_SCORE, FREQ_INDEX, CHECK_INDEX, FREQ_RANK, CHECK_RANK, CONTACTS, CHECKS, C_ALL,
-               EXT_CODES, EXT_CODES_PART, MODEL_VERSION, CLUSTER_DATE, DATE_FROM, DATE_TO, CALC_DT)
+               FREQ_SCORE, CHECK_SCORE, FREQ_INDEX, CHECK_INDEX, FREQ_INDEX_LO, CHECK_INDEX_LO, FREQ_RANK, CHECK_RANK,
+               CONTACTS, CHECKS, C_ALL, EXT_CODES, EXT_CODES_PART, MODEL_VERSION, CLUSTER_DATE, DATE_FROM, DATE_TO, CALC_DT)
         SELECT @idc, @org, s.CLUSTER, d.CLUSTER_NAME, s.ID_CVM_CATEGORY, cat.ID_PARENT, cat.NAME,
                s.FREQ_SCORE, s.CHECK_SCORE,
                s.FREQ_SCORE / NULLIF(b.FREQ_SCORE, 0),
                s.CHECK_SCORE / NULLIF(b.CHECK_SCORE, 0),
+               CASE WHEN s.CLUSTER = 0 THEN 1 ELSE s.FREQ_LO / NULLIF(b.FREQ_SCORE, 0) END,
+               CASE WHEN s.CLUSTER = 0 THEN 1 ELSE s.CHECK_LO / NULLIF(b.CHECK_SCORE, 0) END,
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.FREQ_SCORE), 0) AS tinyint),
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.CHECK_SCORE), 0) AS tinyint),
                s.CONTACTS, s.CHECKS, s.C_ALL, cd.EXT_CODES, cd.EXT_CODES_PART, @ver, @cl_date, @d1, @act_date, SYSDATETIME()
         FROM (SELECT r.CLUSTER, r.ID_CVM_CATEGORY, FREQ_SCORE = r.FREQ_SUM / NULLIF(ca.C_ALL, 0), r.CHECK_SCORE,
+                     FREQ_LO = r.FREQ_SUM / ca.C_ALL - 1.96 * SQRT(CASE WHEN r.FREQ_SQ / ca.C_ALL - SQUARE(r.FREQ_SUM / ca.C_ALL) > 0
+                                                                         THEN (r.FREQ_SQ / ca.C_ALL - SQUARE(r.FREQ_SUM / ca.C_ALL)) / ca.C_ALL
+                                                                         ELSE 0 END),
+                     -- средний чек m = Σ S / Σ n по клиентам (S — суммы чеков клиента, n — его чеки/строки); дисперсия m
+                     -- по клиентам: Σ (S − m·n)² / (Σ n)² · K/(K−1) = (Σ S² − 2m Σ S·n + m² Σ n²) / (Σ n)² · K/(K−1)
+                     CHECK_LO = CASE WHEN r.CHK_K > 1 AND r.CHK_N > 0 THEN
+                                  (r.CHK_SUM / r.CHK_N
+                                   - 1.96 * SQRT(CASE WHEN (r.CHK_S2 - 2 * (r.CHK_SUM / r.CHK_N) * r.CHK_SN
+                                                            + SQUARE(r.CHK_SUM / r.CHK_N) * r.CHK_N2) > 0
+                                                      THEN (r.CHK_S2 - 2 * (r.CHK_SUM / r.CHK_N) * r.CHK_SN
+                                                            + SQUARE(r.CHK_SUM / r.CHK_N) * r.CHK_N2)
+                                                           / SQUARE(r.CHK_N) * r.CHK_K / (r.CHK_K - 1)
+                                                      ELSE 0 END)) / 10000
+                                END,
                      r.CONTACTS, r.CHECKS, ca.C_ALL
               FROM #cres AS r
               JOIN #c_all AS ca ON ca.CLUSTER = r.CLUSTER) AS s
@@ -338,16 +393,32 @@ BEGIN
 
         INSERT dbo.I_CLUSTER_PRODUCT_SCORE
               (ID_COMPANY, ID_ORGANIZATION, CLUSTER, CLUSTER_NAME, ID_PRODUCT, ID_CVM_CATEGORY,
-               FREQ_SCORE, CHECK_SCORE, FREQ_INDEX, CHECK_INDEX, FREQ_RANK, CHECK_RANK, CONTACTS, CHECKS, C_ALL,
-               MODEL_VERSION, CLUSTER_DATE, DATE_FROM, DATE_TO, CALC_DT)
+               FREQ_SCORE, CHECK_SCORE, FREQ_INDEX, CHECK_INDEX, FREQ_INDEX_LO, CHECK_INDEX_LO, FREQ_RANK, CHECK_RANK,
+               CONTACTS, CHECKS, C_ALL, MODEL_VERSION, CLUSTER_DATE, DATE_FROM, DATE_TO, CALC_DT)
         SELECT @idc, @org, s.CLUSTER, d.CLUSTER_NAME, s.ID_PRODUCT, s.ID_CVM_CATEGORY,
                s.FREQ_SCORE, s.CHECK_SCORE,
                s.FREQ_SCORE / NULLIF(b.FREQ_SCORE, 0),
                s.CHECK_SCORE / NULLIF(b.CHECK_SCORE, 0),
+               CASE WHEN s.CLUSTER = 0 THEN 1 ELSE s.FREQ_LO / NULLIF(b.FREQ_SCORE, 0) END,
+               CASE WHEN s.CLUSTER = 0 THEN 1 ELSE s.CHECK_LO / NULLIF(b.CHECK_SCORE, 0) END,
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.FREQ_SCORE), 0) AS tinyint),
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.CHECK_SCORE), 0) AS tinyint),
                s.CONTACTS, s.CHECKS, s.C_ALL, @ver, @cl_date, @d1, @act_date, SYSDATETIME()
         FROM (SELECT r.CLUSTER, r.ID_PRODUCT, r.ID_CVM_CATEGORY, FREQ_SCORE = r.FREQ_SUM / NULLIF(ca.C_ALL, 0), r.CHECK_SCORE,
+                     FREQ_LO = r.FREQ_SUM / ca.C_ALL - 1.96 * SQRT(CASE WHEN r.FREQ_SQ / ca.C_ALL - SQUARE(r.FREQ_SUM / ca.C_ALL) > 0
+                                                                         THEN (r.FREQ_SQ / ca.C_ALL - SQUARE(r.FREQ_SUM / ca.C_ALL)) / ca.C_ALL
+                                                                         ELSE 0 END),
+                     -- средний чек m = Σ S / Σ n по клиентам (S — суммы чеков клиента, n — его чеки/строки); дисперсия m
+                     -- по клиентам: Σ (S − m·n)² / (Σ n)² · K/(K−1) = (Σ S² − 2m Σ S·n + m² Σ n²) / (Σ n)² · K/(K−1)
+                     CHECK_LO = CASE WHEN r.CHK_K > 1 AND r.CHK_N > 0 THEN
+                                  (r.CHK_SUM / r.CHK_N
+                                   - 1.96 * SQRT(CASE WHEN (r.CHK_S2 - 2 * (r.CHK_SUM / r.CHK_N) * r.CHK_SN
+                                                            + SQUARE(r.CHK_SUM / r.CHK_N) * r.CHK_N2) > 0
+                                                      THEN (r.CHK_S2 - 2 * (r.CHK_SUM / r.CHK_N) * r.CHK_SN
+                                                            + SQUARE(r.CHK_SUM / r.CHK_N) * r.CHK_N2)
+                                                           / SQUARE(r.CHK_N) * r.CHK_K / (r.CHK_K - 1)
+                                                      ELSE 0 END)) / 10000
+                                END,
                      r.CONTACTS, r.CHECKS, ca.C_ALL
               FROM #pres AS r
               JOIN #c_all AS ca ON ca.CLUSTER = r.CLUSTER) AS s
