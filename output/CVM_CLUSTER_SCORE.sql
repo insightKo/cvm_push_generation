@@ -3,6 +3,9 @@
 --   ежедневный пересчёт (шаг «MCI Regular update»). Для выбора категорий и товаров под кластерные акции (19.10.2026).
 -- ОДИН СКРИПТ: запустить целиком в SSMS (F5). Создаёт таблицы и процедуру, сразу считает (EXEC) и показывает итог,
 --   затем добавляет шаг в задание (секция 4).
+-- ОБМЕННИК (D:\cvm_api\exchange, прогон каждые 10 мин): секция 0 пропускает весь скрипт, если процедура этой редакции
+--   (строка «cluster_score: редакция …» в её тексте) уже стоит и после её установки был пересчёт (CALC_DT в таблице не раньше
+--   изменения процедуры). Новая редакция процедуры — сменить строку редакции здесь и в секции 2.
 --
 -- ПЕРЕЧЕНЬ ДЕЙСТВИЙ ПО ОБЪЕКТАМ
 --   dbo.I_CLUSTER_CATEGORY_SCORE   создаётся (если нет): строка = организация × кластер × НАША категория (справочник CVM).
@@ -63,6 +66,17 @@
 -- ============================================================================================
 
 USE mci_model
+GO
+
+-- ============================== 0. ПОВТОРНЫЙ ПРОГОН ==============================
+IF OBJECT_DEFINITION(OBJECT_ID(N'dbo.cluster_score')) LIKE N'%cluster_score: редакция 2026-10-20.3%'
+   AND OBJECT_ID(N'dbo.I_CLUSTER_CATEGORY_SCORE', N'U') IS NOT NULL
+   AND EXISTS (SELECT 1 FROM dbo.I_CLUSTER_CATEGORY_SCORE WITH (NOLOCK)
+               WHERE CALC_DT >= (SELECT o.modify_date FROM sys.objects AS o WITH (NOLOCK) WHERE o.object_id = OBJECT_ID(N'dbo.cluster_score')))
+BEGIN
+    RAISERROR(N'cluster_score этой редакции уже стоит и пересчитан — скрипт пропущен.', 10, 1);
+    SET NOEXEC ON;
+END
 GO
 
 -- ============================== 1. ТАБЛИЦЫ ==============================
@@ -140,6 +154,7 @@ GO
 CREATE OR ALTER PROCEDURE dbo.cluster_score
 AS
 BEGIN
+    -- cluster_score: редакция 2026-10-20.3 (по ней секция 0 скрипта CVM_CLUSTER_SCORE.sql узнаёт, что пересчёт уже был)
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
@@ -562,4 +577,7 @@ FROM msdb.dbo.sysjobsteps AS s WITH (NOLOCK)
 JOIN msdb.dbo.sysjobs AS j WITH (NOLOCK) ON j.job_id = s.job_id
 WHERE j.name = N'MCI Regular update'
 ORDER BY s.step_id;
+GO
+
+SET NOEXEC OFF;
 GO
