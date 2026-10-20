@@ -49,9 +49,10 @@
 --   FREQ_INDEX_LO / CHECK_INDEX_LO — нижняя граница 95 % доверительного интервала индекса (решение Елены 20.10.2026,
 --     по ней сортируются топы портрета): категория с горсткой покупателей даёт широкий интервал и уходит вниз сама,
 --     без порога по числу покупателей. Граница отношения «кластер ÷ база» — по логарифму: индекс × exp(−t × √((ошибка
---     кластера ÷ скор кластера)² + (ошибка базы ÷ скор базы)² − ковариация)) — разброс базы учитывается (у редкого товара
---     база почти вся из того же кластера и тоже мала); кластер входит в базу, поэтому вычитается ковариация
---     2 · доля кластера в базе · ошибка кластера² ÷ (скор кластера × скор базы), подкоренное не меньше 0. t — квантиль Стьюдента 97,5 % при числе покупателей − 1 (на двух-трёх
+--     кластера ÷ скор кластера)² + (ошибка базы ÷ скор базы)²)) — разброс базы учитывается (у редкого товара база почти
+--     вся из того же кластера и тоже мала). Ковариацию (кластер входит в базу) НЕ вычитаем намеренно: у товара, который
+--     купили 2 человека и оба из кластера, она обнуляет весь разброс, и горстка покупателей снова наверху (×331 на
+--     живых данных 20.10.2026) — граница остаётся осторожной. t — квантиль Стьюдента 97,5 % при числе покупателей − 1 (на двух-трёх
 --     покупателях интервал честно широкий; больше 120 — 1,96). Один покупатель — граница NULL, в топе такая строка внизу.
 --     Трафик: ошибка среднего по клиентам (у не покупавших 0) величины «FREQ_SCORE клиента × его строк (у категорий —
 --     чеков) с товаром». Чек: средняя сумма чека с товаром, ошибка ПО ПОКУПАТЕЛЯМ (чеки одного клиента — одна единица).
@@ -69,7 +70,7 @@ USE mci_model
 GO
 
 -- ============================== 0. ПОВТОРНЫЙ ПРОГОН ==============================
-IF OBJECT_DEFINITION(OBJECT_ID(N'dbo.cluster_score')) LIKE N'%cluster_score: редакция 2026-10-20.3%'
+IF OBJECT_DEFINITION(OBJECT_ID(N'dbo.cluster_score')) LIKE N'%cluster_score: редакция 2026-10-20.4%'
    AND OBJECT_ID(N'dbo.I_CLUSTER_CATEGORY_SCORE', N'U') IS NOT NULL
    AND EXISTS (SELECT 1 FROM dbo.I_CLUSTER_CATEGORY_SCORE WITH (NOLOCK)
                WHERE CALC_DT >= (SELECT o.modify_date FROM sys.objects AS o WITH (NOLOCK) WHERE o.object_id = OBJECT_ID(N'dbo.cluster_score')))
@@ -154,7 +155,7 @@ GO
 CREATE OR ALTER PROCEDURE dbo.cluster_score
 AS
 BEGIN
-    -- cluster_score: редакция 2026-10-20.3 (по ней секция 0 скрипта CVM_CLUSTER_SCORE.sql узнаёт, что пересчёт уже был)
+    -- cluster_score: редакция 2026-10-20.4 (по ней секция 0 скрипта CVM_CLUSTER_SCORE.sql узнаёт, что пересчёт уже был)
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
@@ -421,18 +422,10 @@ BEGIN
                s.CHECK_SCORE / NULLIF(b.CHECK_SCORE, 0),
                CASE WHEN s.CLUSTER = 0 THEN 1
                     WHEN s.CONTACTS > 1 AND s.F_M > 0 AND b.F_M > 0
-                    THEN (s.F_M / b.F_M) * EXP(-tf.T * SQRT(CASE WHEN SQUARE(s.F_SE / s.F_M) + SQUARE(b.F_SE / b.F_M)
-                                                              - 2.0 * s.C_ALL / b.C_ALL * SQUARE(s.F_SE) / (s.F_M * b.F_M) > 0
-                                                         THEN SQUARE(s.F_SE / s.F_M) + SQUARE(b.F_SE / b.F_M)
-                                                              - 2.0 * s.C_ALL / b.C_ALL * SQUARE(s.F_SE) / (s.F_M * b.F_M)
-                                                         ELSE 0 END)) END,
+                    THEN (s.F_M / b.F_M) * EXP(-tf.T * SQRT(SQUARE(s.F_SE / s.F_M) + SQUARE(b.F_SE / b.F_M))) END,
                CASE WHEN s.CLUSTER = 0 THEN 1
                     WHEN s.CHK_K > 1 AND s.C_M > 0 AND b.C_M > 0 AND s.C_SE IS NOT NULL
-                    THEN (s.C_M / b.C_M) * EXP(-tc.T * SQRT(CASE WHEN SQUARE(s.C_SE / s.C_M) + SQUARE(ISNULL(b.C_SE, 0) / b.C_M)
-                                                              - 2.0 * s.CHK_N / b.CHK_N * SQUARE(s.C_SE) / (s.C_M * b.C_M) > 0
-                                                         THEN SQUARE(s.C_SE / s.C_M) + SQUARE(ISNULL(b.C_SE, 0) / b.C_M)
-                                                              - 2.0 * s.CHK_N / b.CHK_N * SQUARE(s.C_SE) / (s.C_M * b.C_M)
-                                                         ELSE 0 END)) END,
+                    THEN (s.C_M / b.C_M) * EXP(-tc.T * SQRT(SQUARE(s.C_SE / s.C_M) + SQUARE(ISNULL(b.C_SE, 0) / b.C_M))) END,
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.F_M), 0) AS tinyint),
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.CHECK_SCORE), 0) AS tinyint),
                s.CONTACTS, s.CHECKS, s.C_ALL, cd.EXT_CODES, cd.EXT_CODES_PART, @ver, @cl_date, @d1, @act_date, SYSDATETIME()
@@ -457,18 +450,10 @@ BEGIN
                s.CHECK_SCORE / NULLIF(b.CHECK_SCORE, 0),
                CASE WHEN s.CLUSTER = 0 THEN 1
                     WHEN s.CONTACTS > 1 AND s.F_M > 0 AND b.F_M > 0
-                    THEN (s.F_M / b.F_M) * EXP(-tf.T * SQRT(CASE WHEN SQUARE(s.F_SE / s.F_M) + SQUARE(b.F_SE / b.F_M)
-                                                              - 2.0 * s.C_ALL / b.C_ALL * SQUARE(s.F_SE) / (s.F_M * b.F_M) > 0
-                                                         THEN SQUARE(s.F_SE / s.F_M) + SQUARE(b.F_SE / b.F_M)
-                                                              - 2.0 * s.C_ALL / b.C_ALL * SQUARE(s.F_SE) / (s.F_M * b.F_M)
-                                                         ELSE 0 END)) END,
+                    THEN (s.F_M / b.F_M) * EXP(-tf.T * SQRT(SQUARE(s.F_SE / s.F_M) + SQUARE(b.F_SE / b.F_M))) END,
                CASE WHEN s.CLUSTER = 0 THEN 1
                     WHEN s.CHK_K > 1 AND s.C_M > 0 AND b.C_M > 0 AND s.C_SE IS NOT NULL
-                    THEN (s.C_M / b.C_M) * EXP(-tc.T * SQRT(CASE WHEN SQUARE(s.C_SE / s.C_M) + SQUARE(ISNULL(b.C_SE, 0) / b.C_M)
-                                                              - 2.0 * s.CHK_N / b.CHK_N * SQUARE(s.C_SE) / (s.C_M * b.C_M) > 0
-                                                         THEN SQUARE(s.C_SE / s.C_M) + SQUARE(ISNULL(b.C_SE, 0) / b.C_M)
-                                                              - 2.0 * s.CHK_N / b.CHK_N * SQUARE(s.C_SE) / (s.C_M * b.C_M)
-                                                         ELSE 0 END)) END,
+                    THEN (s.C_M / b.C_M) * EXP(-tc.T * SQRT(SQUARE(s.C_SE / s.C_M) + SQUARE(ISNULL(b.C_SE, 0) / b.C_M))) END,
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.F_M), 0) AS tinyint),
                CAST(ROUND(100 * PERCENT_RANK() OVER (PARTITION BY s.CLUSTER ORDER BY s.CHECK_SCORE), 0) AS tinyint),
                s.CONTACTS, s.CHECKS, s.C_ALL, @ver, @cl_date, @d1, @act_date, SYSDATETIME()
