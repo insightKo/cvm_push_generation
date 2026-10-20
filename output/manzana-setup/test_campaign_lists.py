@@ -1,6 +1,6 @@
-"""Тесты campaign_lists.py без сети: подставной API Campaign, подставная загрузка в хранилище, файлы во временном каталоге."""
-import hashlib
-import json
+"""Тесты campaign_lists.py без сети: подставной API Campaign, подставная загрузка в хранилище, реестр во временном каталоге.
+Список — GUID из базы списков (как их отдаёт robot.ListsDb.guids), без файлов на диске."""
+import io
 import sys
 import uuid
 from pathlib import Path
@@ -11,18 +11,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import campaign_lists as cl  # noqa: E402
 
+KEY, NAME = "500001_20261023", "500001_Кешбэк на кофе"
 
-def put_list(inbox: Path, number=101430, start="20261023", rows=3, title="Кешбэк на кофе", bad_sha=False, bad_count=False, empty_row=False):
-    lines = [str(uuid.uuid4()).upper() + "\r\n" for _ in range(rows)]
-    if empty_row:
-        lines.insert(1, "\r\n")
-    body = "".join(lines).encode("utf-8")
-    name = f"{number}_{start}.csv"
-    (inbox / name).write_bytes(body)
-    manifest = {"promo": number, "title": title, "start_date": "2026-10-23", "approved_by": "elena", "count": rows + (1 if bad_count else 0),
-                "sha256": ("0" * 64) if bad_sha else hashlib.sha256(body).hexdigest(), "file": name, "exported_at": "2026-10-20T10:00:00+03:00"}
-    (inbox / f"{number}_{start}.manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
-    return inbox / name
+
+def guids(n=3):
+    return [str(uuid.uuid4()) for _ in range(n)]
 
 
 class Api:
@@ -54,125 +47,121 @@ class Api:
         return {"ID": "0123456789abcdef01234567", "Name": body["nameMList"], "ListID": "list-guid"}
 
 
-def fake_uploader(api, archive, *, host):
-    api.calls.append(("UPLOAD", archive.name, host))
-    with ZipFile(archive) as z:
-        assert z.namelist() == [archive.stem + ".csv"]
-        content = z.read(archive.stem + ".csv")
-        assert content.startswith(b"contactid\r\n") and content.count(b"\r\n") == 4
+def fake_uploader(api, key, body, *, host):
+    api.calls.append(("UPLOAD", key, host))
+    with ZipFile(io.BytesIO(body)) as z:
+        assert z.namelist() == [key[:-4] + ".csv"]
+        content = z.read(key[:-4] + ".csv")
+    assert content.startswith(b"contactid\r\n") and content.endswith(b"\r\n")
+    api.uploaded = content.decode("ascii").split("\r\n")[1:-1]
 
 
 @pytest.fixture
-def env(tmp_path):
-    inbox, receipts, work = tmp_path / "inbox", tmp_path / "receipts", tmp_path / "work"
-    for d in (inbox, receipts, work):
-        d.mkdir()
-    return inbox, receipts, work, cl.Ledger(tmp_path / "state" / "imports.sqlite3")
+def ledger(tmp_path):
+    return cl.Ledger(tmp_path / "state" / "imports.sqlite3")
 
 
-def run(path, api, ledger, receipts, work, **kw):
-    return cl.import_list(path, api=api, ledger=ledger, receipts=receipts, workdir=work, uploader=fake_uploader, sleep=lambda s: None, **kw)
+def run(values, api, ledger, **kw):
+    name = kw.pop("name", NAME)
+    archive, count, sha = cl.build_list_archive(values, name)
+    return cl.import_guids(KEY, name, archive, count, sha, api=api, ledger=ledger, uploader=fake_uploader,
+                           sleep=lambda s: None, **kw)
 
 
-def test_full_import_writes_ok_receipt_and_single_post(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox)
+def test_build_list_archive_one_pass_uppercase_and_composition_hash():
+    a, b = guids(2)
+    archive, count, sha = cl.build_list_archive(iter([a, b.upper()]), NAME)
+    with ZipFile(io.BytesIO(archive)) as z:
+        assert z.read(f"{NAME}.csv") == f"contactid\r\n{a.upper()}\r\n{b.upper()}\r\n".encode()
+    assert count == 2 and sha == cl.build_list_archive([a.upper(), b], NAME)[2] and sha != cl.build_list_archive([b, a], NAME)[2]
+    for bad in ([], [a, ""], [a, None], ["not-a-guid"]):
+        with pytest.raises(cl.ListImportError) as e:
+            cl.build_list_archive(bad, NAME)
+        assert e.value.code == "SOURCE_INVALID"
+
+
+def test_full_import_single_post_and_repeat_does_nothing(ledger):
+    values = guids(3)
     api = Api(loaded=2)
-    r = run(path, api, ledger, receipts, work)
-    assert r["name"] == "101430_Кешбэк на кофе" and r["loaded"] == 2 and r["source_rows"] == 3 and r["receipt_written"]
+    r = run(values, api, ledger)
+    assert r["name"] == NAME and r["loaded"] == 2 and r["source_rows"] == 3 and r["not_uploaded"] == 1
+    assert api.uploaded == [g.upper() for g in values]
     put = [c for c in api.calls if c[0] == "PUT"]
-    assert len(put) == 1 and put[0][2] == {"key": "101430_Кешбэк на кофе.zip", "importType": "contact_id", "loadType": 4, "destination": "camp",
-                                           "nameMList": "101430_Кешбэк на кофе", "mListMode": 3, "sendToMO": False}
-    ok = json.loads((receipts / "101430_20261023.ok.json").read_text(encoding="utf-8"))
-    assert ok["campaign_name"] == "101430_Кешбэк на кофе" and ok["loaded"] == 2 and set(ok) == {"file", "campaign_name", "loaded", "loaded_at"}
-    assert ledger.get(path.name)["status"] == "confirmed" and not list(work.iterdir())
-    # повтор — только квитанция, без запросов к Campaign
+    assert len(put) == 1 and put[0][2] == {"key": f"{NAME}.zip", "importType": "contact_id", "loadType": 4, "destination": "camp",
+                                           "nameMList": NAME, "mListMode": 3, "sendToMO": False}
+    assert ledger.get(KEY)["status"] == "confirmed" and ledger.get(KEY)["loaded"] == 2
     before = len(api.calls)
-    r2 = run(path, api, ledger, receipts, work)
-    assert r2["already_confirmed"] and len(api.calls) == before
-    assert cl.pending_files(inbox, receipts) == []
+    r2 = run(values, api, ledger)
+    assert r2["already_confirmed"] and r2["loaded"] == 2 and len(api.calls) == before
 
 
-def test_sha_mismatch_writes_error_receipt_without_campaign_calls(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox, bad_sha=True)
-    api = Api()
-    with pytest.raises(cl.SourceIntegrityError):
-        run(path, api, ledger, receipts, work)
-    assert api.calls == [] and (receipts / "101430_20261023.error.json").is_file()
-    assert ledger.get(path.name)["status"] == "failed_preflight"
-
-
-def test_empty_guid_row_is_source_error(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox, empty_row=True)
-    with pytest.raises(cl.SourceIntegrityError, match="не GUID"):
-        run(path, Api(), ledger, receipts, work)
-
-
-def test_existing_list_is_not_reimported(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox)
+def test_existing_list_is_not_reimported(ledger):
     api = Api(exists=True)
     with pytest.raises(cl.ListImportError, match="уже существует"):
-        run(path, api, ledger, receipts, work)
-    assert not [c for c in api.calls if c[0] in ("PUT", "UPLOAD")] and not list(receipts.iterdir())
-    assert ledger.get(path.name)["status"] == "failed_preflight"
+        run(guids(), api, ledger)
+    assert not [c for c in api.calls if c[0] in ("PUT", "UPLOAD")]
+    assert ledger.get(KEY)["status"] == "failed_preflight"
 
 
-def test_lost_import_response_never_repeats_post(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox)
-    api = Api(lose_import=True)
+def test_lost_import_response_never_repeats_post(ledger):
+    values = guids()
     with pytest.raises(cl.ListImportError) as e:
-        run(path, api, ledger, receipts, work)
-    assert e.value.code == "UNKNOWN_OUTCOME" and ledger.get(path.name)["status"] == "uncertain"
+        run(values, Api(lose_import=True), ledger)
+    assert e.value.code == "UNKNOWN_OUTCOME" and ledger.get(KEY)["status"] == "uncertain"
     api2 = Api()
     with pytest.raises(cl.ListImportError) as e2:
-        run(path, api2, ledger, receipts, work)
+        run(values, api2, ledger)
     assert e2.value.code == "UNKNOWN_OUTCOME" and api2.calls == []
 
 
-def test_resume_by_import_id_only_polls(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox)
-    m = cl.read_manifest(path)
-    sha, count = cl.verify_source(path, m)
-    ledger.start(path.name, "101430_Кешбэк на кофе", m["manifest_sha256"], sha, count, False)
-    ledger.transition(path.name, "importing", import_id="0123456789abcdef01234567")
+def test_missing_import_id_is_uncertain(ledger):
+    with pytest.raises(cl.ListImportError) as e:
+        run(guids(), Api(missing_id=True), ledger)
+    assert e.value.code == "UNKNOWN_OUTCOME" and ledger.get(KEY)["status"] == "uncertain"
+
+
+def test_resume_by_import_id_only_polls(ledger):
+    values = guids()
+    _, count, sha = cl.build_list_archive(values, NAME)
+    ledger.start(KEY, NAME, sha, count, False)
+    ledger.transition(KEY, "importing", import_id="0123456789abcdef01234567")
     api = Api(loaded=3)
-    r = run(path, api, ledger, receipts, work)
+    r = run(values, api, ledger)
     assert r["resumed"] and r["loaded"] == 3 and [c[0] for c in api.calls] == ["POST"]
-    assert (receipts / "101430_20261023.ok.json").is_file()
 
 
-def test_resume_refuses_changed_file(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox)
-    m = cl.read_manifest(path)
-    sha, count = cl.verify_source(path, m)
-    ledger.start(path.name, "101430_Кешбэк на кофе", m["manifest_sha256"], sha, count, False)
-    ledger.transition(path.name, "importing", import_id="0123456789abcdef01234567")
-    put_list(inbox, rows=4)  # задание списков пересобрало файл и паспорт
+def test_resume_refuses_changed_composition(ledger):
+    values = guids()
+    _, count, sha = cl.build_list_archive(values, NAME)
+    ledger.start(KEY, NAME, sha, count, False)
+    ledger.transition(KEY, "importing", import_id="0123456789abcdef01234567")
     api = Api(loaded=4)
     with pytest.raises(cl.ListImportError) as e:
-        run(path, api, ledger, receipts, work)
-    assert e.value.code == "SOURCE_CHANGED" and api.calls == [] and not list(receipts.iterdir())
-    assert ledger.get(path.name)["status"] == "importing"
+        run(values + guids(1), api, ledger)  # список в базе пересобрали после запуска импорта
+    assert e.value.code == "SOURCE_CHANGED" and api.calls == [] and ledger.get(KEY)["status"] == "importing"
 
 
-def test_foreign_ok_receipt_is_not_overwritten(env):
-    inbox, receipts, work, ledger = env
-    path = put_list(inbox)
-    (receipts / "101430_20261023.ok.json").write_text(json.dumps({"file": path.name, "campaign_name": "other", "loaded": 1, "loaded_at": "x"}))
-    assert cl.pending_files(inbox, receipts) == []
-    r = run(path, Api(), ledger, receipts, work)
-    assert r["receipt_written"] is False and "перезапись" in r["receipt_error"]
-    assert json.loads((receipts / "101430_20261023.ok.json").read_text())["campaign_name"] == "other"
+def test_import_error_in_status_keeps_import_unrepeatable(ledger):
+    values = guids()
+    with pytest.raises(cl.ListImportError) as e:
+        run(values, Api(error="bad file"), ledger)
+    assert e.value.code == "IMPORT_ERROR" and ledger.get(KEY)["status"] == "awaiting_confirmation"
+    api2 = Api()
+    assert run(values, api2, ledger)["resumed"]  # повтор только опрашивает статус по ID
+    assert [c[0] for c in api2.calls] == ["POST"]
+
+
+def test_send_to_mo_name_limit(ledger):
+    with pytest.raises(cl.ListImportError) as e:
+        run(guids(), Api(), ledger, name="500001_" + "x" * 50, send_to_mo=True)
+    assert e.value.code == "NAME_INVALID"
+    api = Api(send_mo=True)
+    assert run(guids(), api, ledger, send_to_mo=True)["loaded"] == 3
+    assert [c for c in api.calls if c[0] == "PUT"][0][2]["destination"] == "campml"
 
 
 def test_upload_url_validation():
-    key = "101430_x.zip"
+    key = "500001_x.zip"
     good = f"https://{cl.S3_UPLOAD_HOST_DEFAULT}/mlists/{key}?X-Amz-Signature=s"
     assert cl.validate_upload_url(good, key, cl.S3_UPLOAD_HOST_DEFAULT) == good
     for bad in (good.replace("https", "http"), f"https://evil.example/mlists/{key}?X-Amz-Signature=s",
@@ -182,7 +171,7 @@ def test_upload_url_validation():
 
 
 def test_list_name_rules():
-    assert cl.validate_list_name("101430_Кешбэк на кофе") == "101430_Кешбэк на кофе"
+    assert cl.validate_list_name(NAME) == NAME
     for bad in ("", "a/b", "name.", "CON", "x" * 121):
         with pytest.raises(cl.ListImportError):
             cl.validate_list_name(bad)

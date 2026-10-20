@@ -15,10 +15,10 @@ RUN pip install --no-cache-dir "playwright==1.63.0" "psycopg[binary]==3.2.3" "py
 WORKDIR /app
 COPY robot.py campaign_lists.py manzana_session.py campaign_push.py coupon_setup.py loyalty_admin.py ./
 COPY sql ./sql
-# HOME=/profile: туда Chromium пишет кэш и профиль; каталог на ru принадлежит uid 10010 (как хранилище списков).
-ENV PYTHONUNBUFFERED=1 LISTS_STORAGE=/data LISTS_STATE=/state HOME=/profile
-# uid совпадает с системным пользователем cvm-lists на хосте — владельцем /srv/cvm_lists/lists: робот читает inbox/
-# и пишет receipts/ как партнёр по обмену, других прав на диске у него нет.
+# HOME=/profile: туда Chromium пишет кэш и профиль; каталог на ru принадлежит uid 10010.
+ENV PYTHONUNBUFFERED=1 LISTS_STATE=/state HOME=/profile
+# uid 10010 — владелец /srv/cvm_portal/manzana-state и профиля браузера. Хранилище списков (SFTP-обмен) роботу не
+# монтируется: списки он берёт из базы списков cvm_lists (решение Елены 20.10.2026).
 USER 10010:10010
 ENTRYPOINT ["python", "/app/robot.py"]
 CMD ["--check"]

@@ -7,9 +7,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# elena — в группе docker и владелец manzana.env; сам процесс в контейнере идёт под uid 10010 (cvm-lists): читает inbox/,
-# пишет receipts/ (как партнёр по обмену), журнал и отметки — в /state, профиль браузера — в /profile.
-# База портала — роль cvm_manzana_ro только на чтение (set-secrets.sh). К MCI задание не ходит.
+# elena — в группе docker и владелец manzana.env; сам процесс в контейнере идёт под uid 10010: журнал и отметки — в /state,
+# профиль браузера — в /profile. Акции и сообщения — база портала (роль cvm_manzana_ro, только чтение); списки и итог
+# заведения — база списков cvm-lists-db (роль lists_manzana, сеть app_default). SFTP-обмен списков роботу не монтируется.
+# К MCI задание не ходит.
 User=elena
 Group=elena
 ExecStartPre=-/usr/bin/docker rm -f cvm-manzana-setup
@@ -19,7 +20,6 @@ ExecStartPre=-/usr/bin/docker rm -f cvm-manzana-setup
 ExecStart=/usr/bin/docker run --rm --init --name cvm-manzana-setup --hostname cvm-manzana-setup \
   --network app_default \
   --env-file /srv/cvm_portal/manzana.env \
-  -v /srv/cvm_lists/lists:/data \
   -v /srv/cvm_portal/manzana-state:/state \
   -v /srv/cvm_portal/manzana/profile:/profile \
   --read-only --tmpfs /tmp:size=256m --shm-size 512m \

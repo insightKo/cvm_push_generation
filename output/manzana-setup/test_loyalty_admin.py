@@ -17,6 +17,7 @@ INDEX_HTML = '<html><body><table><tr id="coupon_data_7"><td class="col-id">7</td
              '</td><td class="col-coupon_emission_id"></td><td class="col-button_title">В КАТАЛОГ</td>' \
              '<td class="col-button_deeplink">dixyapp://app/catalog</td></tr></table></body></html>'
 CSV = "Id,Id купона в манзане,Id выпуска в манзане,Текст кнопки,Диплинк для кнопки\r\n7," + GUID + ",,В КАТАЛОГ,dixyapp://app/catalog\r\n"
+OTHER_CSV = CSV.replace(GUID, "11111111-2222-3333-4444-555555555555")  # экспорт без нашей кнопки
 
 
 def detail(record_id, guid=GUID, title="В КАТАЛОГ", link="dixyapp://app/catalog", emission="Пусто"):
@@ -66,7 +67,8 @@ def csv_handler(req, form, params):
 
 def admin(routes, authenticated=True, **kw):
     req = FakeRequest(routes, authenticated)
-    return la.LoyaltyAdmin(req, base_url=BASE, login=kw.get("login", "robot@test"), password=kw.get("password", "pw")), req
+    return la.LoyaltyAdmin(req, base_url=BASE, login=kw.get("login", "robot@test"), password=kw.get("password", "pw"),
+                           sleep=lambda s: None), req
 
 
 def test_csrf_and_login_detection():
@@ -81,9 +83,13 @@ def test_csrf_and_login_detection():
 def test_parse_csv_and_detail():
     rows = la.parse_csv(CSV)
     assert rows == [la.ButtonRecord(7, GUID, "В КАТАЛОГ", "dixyapp://app/catalog", "")]
-    with pytest.raises(la.LoyaltyAdminError) as e:
-        la.parse_csv("Id,Текст кнопки\r\n1,x\r\n")
-    assert e.value.code == "CSV_INCOMPLETE"
+    assert la.parse_csv("\ufeff" + CSV) == rows  # метка BOM в начале реального экспорта
+    header = CSV.splitlines()[0]
+    for broken in ("Id,Текст кнопки\r\n1,x\r\n", header + "\r\n", header + "\r\n7," + GUID + ",,В КАТАЛОГ\r\n",
+                   header + "\r\nабв," + GUID + ",,В КАТАЛОГ,dixyapp://app/catalog\r\n"):
+        with pytest.raises(la.LoyaltyAdminError) as e:
+            la.parse_csv(broken)
+        assert e.value.code == "CSV_INCOMPLETE"
     d = la.parse_detail(detail(7), 7)
     assert d.guid == GUID and d.title == "В КАТАЛОГ" and d.deeplink == "dixyapp://app/catalog" and d.emission_id == ""
 
@@ -135,7 +141,7 @@ def test_create_button_once_with_redirect_and_verify():
         created["form"] = form
         return Resp(302, BASE + la.INDEX_PATH, "", {"Location": BASE + f"{la.INDEX_PATH}/9"})
 
-    a, req = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(200, BASE, CSV.splitlines()[0] + "\r\n"),
+    a, req = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(200, BASE, OTHER_CSV),
                     ("GET", la.NEW_PATH): lambda r, f, p: Resp(200, BASE, NEW_HTML), ("POST", la.INDEX_PATH): post,
                     ("GET", f"{la.INDEX_PATH}/9"): lambda r, f, p: Resp(200, BASE, detail(9, title="ВЫБРАТЬ", link="dixyapp://app/x"))})
     state, rec = a.ensure_button(guid=GUID, title="ВЫБРАТЬ", deeplink="dixyapp://app/x")
@@ -144,20 +150,24 @@ def test_create_button_once_with_redirect_and_verify():
 
 
 def test_unclear_create_response_searches_by_guid_and_never_reposts():
-    seen = {"posts": 0}
+    seen = {"posts": 0, "looks_after": 0}
 
     def post(req, form, params):
         seen["posts"] += 1
-        return Resp(200, BASE + la.INDEX_PATH, "<html>ok</html>")  # без редиректа и ID
+        return Resp(302, BASE + la.INDEX_PATH, "", {"Location": BASE + "/admin/welcome"})  # успех без ID записи
 
-    csv_after = CSV.replace("7,", "12,")
-    a, req = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(200, BASE, csv_after if seen["posts"] else CSV.splitlines()[0] + "\r\n"),
-                    ("GET", la.NEW_PATH): lambda r, f, p: Resp(200, BASE, NEW_HTML), ("POST", la.INDEX_PATH): post,
-                    ("GET", f"{la.INDEX_PATH}/12"): lambda r, f, p: Resp(200, BASE, detail(12))})
+    def export(req, form, params):
+        if not seen["posts"]:
+            return Resp(200, BASE, OTHER_CSV)
+        seen["looks_after"] += 1  # запись видна в экспорте только с третьего поиска (как в тесте ДИКСИ)
+        return Resp(200, BASE, CSV.replace("7,", "12,") if seen["looks_after"] >= 3 else OTHER_CSV)
+
+    a, req = admin({("GET", la.INDEX_PATH + ".csv"): export, ("GET", la.NEW_PATH): lambda r, f, p: Resp(200, BASE, NEW_HTML),
+                    ("POST", la.INDEX_PATH): post, ("GET", f"{la.INDEX_PATH}/12"): lambda r, f, p: Resp(200, BASE, detail(12))})
     state, rec = a.ensure_button(guid=GUID, title="В КАТАЛОГ", deeplink="dixyapp://app/catalog")
-    assert state == "created" and rec.record_id == 12 and seen["posts"] == 1
+    assert state == "created" and rec.record_id == 12 and seen["posts"] == 1 and seen["looks_after"] == 3
     # ответ 500 — исход неясен, повторный POST запрещён
-    b, req2 = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(200, BASE, CSV.splitlines()[0] + "\r\n"),
+    b, req2 = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(200, BASE, OTHER_CSV),
                      ("GET", la.NEW_PATH): lambda r, f, p: Resp(200, BASE, NEW_HTML),
                      ("POST", la.INDEX_PATH): lambda r, f, p: Resp(500, BASE, "error")})
     with pytest.raises(la.LoyaltyAdminError) as e:
@@ -165,19 +175,30 @@ def test_unclear_create_response_searches_by_guid_and_never_reposts():
     assert e.value.code == "UNKNOWN_OUTCOME" and len([c for c in req2.calls if c[0] == "POST"]) == 1
 
 
-def test_csv_unavailable_falls_back_to_pages_and_proves_completeness():
-    pages = {1: INDEX_HTML, 2: "<html><body><table></table></body></html>"}
+def test_csv_unavailable_or_empty_stops_without_create():
+    """Без полного экспорта отсутствие кнопки не доказано: ни постраничного обхода, ни POST."""
+    for export in (lambda r, f, p: Resp(302, BASE, "", {"Location": BASE + la.LOGIN_PATH}),
+                   lambda r, f, p: Resp(500, BASE, ""),
+                   lambda r, f, p: Resp(200, BASE, CSV.splitlines()[0] + "\r\n")):
+        a, req = admin({("GET", la.INDEX_PATH + ".csv"): export, ("GET", la.INDEX_PATH): index_handler,
+                        ("GET", la.NEW_PATH): lambda r, f, p: Resp(200, BASE, NEW_HTML)})
+        with pytest.raises(la.LoyaltyAdminError) as e:
+            a.ensure_button(guid=GUID, title="В КАТАЛОГ", deeplink="dixyapp://app/catalog")
+        assert e.value.code == "CSV_INCOMPLETE" and not [c for c in req.calls if c[0] == "POST"]
+        assert not [c for c in req.calls if c[1] == la.INDEX_PATH and c[2].get("page")]
 
-    def index(req, form, params):
-        page = int(params.get("page", "1"))
-        return Resp(200, BASE + la.INDEX_PATH, pages[page])
 
-    a, req = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(302, BASE, "", {"Location": BASE + la.LOGIN_PATH}),
-                    ("GET", la.INDEX_PATH): index})
-    assert a.find_button(GUID).record_id == 7
-    assert a.find_button("11111111-2222-3333-4444-555555555555") is None
-    stuck, _ = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(500, BASE, ""),
-                      ("GET", la.INDEX_PATH): lambda r, f, p: Resp(200, BASE + la.INDEX_PATH, INDEX_HTML)})
+def test_session_401_means_sign_in():
+    a, _ = admin({("GET", la.INDEX_PATH): lambda r, f, p: Resp(401, BASE + la.INDEX_PATH, "")})
+    assert a.is_authenticated() is False
+
+
+def test_attempted_button_is_only_searched_never_reposted():
+    """POST кнопки ушёл в прошлом прогоне (отметка реестра): есть в экспорте — проверяется, нет — остановка без POST."""
+    a, req = admin({("GET", la.INDEX_PATH + ".csv"): lambda r, f, p: Resp(200, BASE, OTHER_CSV),
+                    ("GET", la.NEW_PATH): lambda r, f, p: Resp(200, BASE, NEW_HTML)})
     with pytest.raises(la.LoyaltyAdminError) as e:
-        stuck.find_button("11111111-2222-3333-4444-555555555555")
-    assert e.value.code == "CSV_INCOMPLETE"
+        a.ensure_button(guid=GUID, title="В КАТАЛОГ", deeplink="dixyapp://app/catalog", attempted=True)
+    assert e.value.code == "UNKNOWN_OUTCOME" and not [c for c in req.calls if c[0] == "POST"]
+    b, _ = admin({("GET", la.INDEX_PATH + ".csv"): csv_handler, ("GET", f"{la.INDEX_PATH}/7"): lambda r, f, p: Resp(200, BASE, detail(7))})
+    assert b.ensure_button(guid=GUID, title="В КАТАЛОГ", deeplink="dixyapp://app/catalog", attempted=True)[0] == "exists"

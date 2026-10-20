@@ -14,10 +14,11 @@ from __future__ import annotations
 import csv
 import io
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import urlparse
 
 INDEX_PATH = "/admin/coupon_data"
@@ -108,39 +109,6 @@ class _DetailParser(HTMLParser):
             self._field = None
 
 
-class _TableParser(HTMLParser):
-    FIELDS = {"col-coupon_external_id": "guid", "col-coupon_emission_id": "emission_id", "col-button_title": "title",
-              "col-button_deeplink": "deeplink"}
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.records: list[ButtonRecord] = []
-        self._row, self._vals, self._field, self._buf = None, {}, None, []
-
-    def handle_starttag(self, tag, attrs):
-        d = {k: v for k, v in attrs if v is not None}
-        if tag == "tr":
-            m = re.fullmatch(r"coupon_data_(\d+)", d.get("id", ""))
-            self._row, self._vals = (int(m.group(1)) if m else None), {}
-        elif tag == "td" and self._row is not None:
-            classes = set(d.get("class", "").split())
-            self._field = next((f for c, f in self.FIELDS.items() if c in classes), None)
-            self._buf = []
-
-    def handle_data(self, data):
-        if self._field:
-            self._buf.append(data)
-
-    def handle_endtag(self, tag):
-        if tag == "td" and self._field:
-            self._vals[self._field] = "".join(self._buf).strip()
-            self._field = None
-        elif tag == "tr" and self._row is not None:
-            self.records.append(ButtonRecord(self._row, self._vals.get("guid", ""), self._vals.get("title", ""),
-                                             self._vals.get("deeplink", ""), self._vals.get("emission_id", "")))
-            self._row = None
-
-
 def parse_detail(html: str, record_id: int) -> ButtonRecord:
     p = _DetailParser()
     p.feed(html)
@@ -149,8 +117,14 @@ def parse_detail(html: str, record_id: int) -> ButtonRecord:
 
 
 def parse_csv(text: str) -> list[ButtonRecord]:
-    """Полный экспорт кнопок; без обязательных колонок отсутствие GUID не доказано."""
-    rows = list(csv.reader(io.StringIO(text)))
+    """Полный экспорт кнопок — строго, как у ДИКСИ (24c_coupon_data_csv_lookup.js): метка BOM снимается; без обязательных
+    колонок, без строк данных, со строкой другой длины или нечисловым Id отсутствие GUID не доказано — остановка."""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    try:
+        rows = [r for r in csv.reader(io.StringIO(text, newline=""), strict=True) if r]
+    except csv.Error as exc:
+        raise LoyaltyAdminError(f"Экспорт CSV повреждён: {exc}.", code="CSV_INCOMPLETE") from exc
     if not rows:
         raise LoyaltyAdminError("Экспорт CSV пуст.", code="CSV_INCOMPLETE")
     header = [h.strip().casefold() for h in rows[0]]
@@ -162,10 +136,12 @@ def parse_csv(text: str) -> list[ButtonRecord]:
         idx[key] = pos
     out = []
     for row in rows[1:]:
-        if len(row) <= max(idx.values()) or not row[idx["id"]].strip().isdigit():
-            continue
+        if len(row) != len(header) or not re.fullmatch(r"[1-9][0-9]*", row[idx["id"]].strip()):
+            raise LoyaltyAdminError("Экспорт CSV: неполная строка или недопустимый Id; отсутствие GUID не доказано.", code="CSV_INCOMPLETE")
         out.append(ButtonRecord(int(row[idx["id"]]), row[idx["guid"]].strip(), row[idx["title"]].strip(),
                                 row[idx["deeplink"]].strip(), row[idx["emission"]].strip()))
+    if not out:
+        raise LoyaltyAdminError("Экспорт CSV без строк данных; отсутствие GUID не доказано.", code="CSV_INCOMPLETE")
     return out
 
 
@@ -174,8 +150,10 @@ def parse_csv(text: str) -> list[ButtonRecord]:
 class LoyaltyAdmin:
     """HTTP к админке через APIRequestContext Playwright того же контекста, что у робота (cookies сессии Devise)."""
 
-    def __init__(self, request: Any, *, base_url: str, login: str = "", password: str = "", timeout_ms: int = 60_000) -> None:
+    def __init__(self, request: Any, *, base_url: str, login: str = "", password: str = "", timeout_ms: int = 60_000,
+                 sleep: Callable[[float], None] = time.sleep) -> None:
         self.request = request
+        self.sleep = sleep
         self.base_url = base_url.rstrip("/")
         self.login, self.password = login, password
         self.timeout_ms = int(timeout_ms)
@@ -205,7 +183,7 @@ class LoyaltyAdmin:
 
     def is_authenticated(self) -> bool:
         status, url, body, headers = self._get(INDEX_PATH, max_redirects=0)
-        if status in (301, 302, 303, 307, 308):
+        if status in (301, 302, 303, 307, 308, 401, 403):  # 401/403 — сессия истекла, нужен вход (как 20_sessions.js у ДИКСИ)
             return False
         if status != 200:
             raise LoyaltyAdminError(f"Проверка сессии админки: HTTP {status}.", code="ADMIN_HTTP")
@@ -234,35 +212,17 @@ class LoyaltyAdmin:
     # --- кнопки ---
 
     def find_button(self, guid: str) -> ButtonRecord | None:
+        """Поиск только по полному CSV; запасного постраничного обхода нет (у ДИКСИ — «never fall back to pages»):
+        недоступный или урезанный экспорт не доказывает, что кнопки нет."""
         guid = normalize_guid(guid)
         status, url, text, _ = self._get(INDEX_PATH + ".csv", headers={"Accept": "text/csv"})
-        if status == 200 and LOGIN_PATH not in str(url).lower():
-            records = parse_csv(text)
-        else:
-            records = self._scan_pages()
+        if status != 200 or LOGIN_PATH in str(url).lower():
+            raise LoyaltyAdminError(f"Экспорт CSV кнопок недоступен (HTTP {status}); отсутствие GUID не доказано.", code="CSV_INCOMPLETE")
+        records = parse_csv(text)
         matches = [r for r in records if r.guid.strip().casefold() == guid]
         if len(matches) > 1:
             raise LoyaltyAdminError(f"В админке несколько кнопок для GUID {guid}: {[m.record_id for m in matches]}.", code="BUTTON_AMBIGUOUS")
         return matches[0] if matches else None
-
-    def _scan_pages(self, max_pages: int = 100) -> list[ButtonRecord]:
-        """Запасной путь: постраничный список по id_desc; экспорт недоступен — отсутствие GUID без полного обхода не доказано."""
-        out, previous = [], None
-        for page in range(1, max_pages + 1):
-            params = {"order": "id_desc"} | ({"page": str(page)} if page > 1 else {})
-            status, url, html, _ = self._get(INDEX_PATH, params=params)
-            if status != 200 or urlparse(str(url)).path.rstrip("/") != INDEX_PATH:
-                raise LoyaltyAdminError("Список кнопок недоступен или перенаправлен; отсутствие GUID не доказано.", code="CSV_INCOMPLETE")
-            p = _TableParser()
-            p.feed(html)
-            if not p.records:
-                return out
-            ids = tuple(r.record_id for r in p.records)
-            if ids == previous:
-                raise LoyaltyAdminError("Админка не переключила страницу списка; проверка не завершена.", code="CSV_INCOMPLETE")
-            previous = ids
-            out.extend(p.records)
-        raise LoyaltyAdminError(f"Список кнопок не проверен полностью за {max_pages} страниц.", code="CSV_INCOMPLETE")
 
     def read_button(self, record_id: int) -> ButtonRecord:
         status, _, html, _ = self._get(f"{INDEX_PATH}/{record_id}")
@@ -284,8 +244,10 @@ class LoyaltyAdmin:
         if problems:
             raise LoyaltyAdminError("Кнопка в админке не совпадает: " + ", ".join(problems), code="BUTTON_MISMATCH")
 
-    def ensure_button(self, *, guid: str, title: str, deeplink: str, before_create=lambda: None) -> tuple[str, ButtonRecord]:
-        """Существующая кнопка проверяется, новая создаётся одним POST; после неясного ответа — только поиск по GUID."""
+    def ensure_button(self, *, guid: str, title: str, deeplink: str, before_create=lambda: None,
+                      attempted: bool = False) -> tuple[str, ButtonRecord]:
+        """Существующая кнопка проверяется, новая создаётся одним POST; после неясного ответа — только поиск по GUID.
+        attempted — POST уже отправлялся в прошлом прогоне (отметка реестра): кнопки нет в экспорте — остановка без POST."""
         guid = normalize_guid(guid)
         title, deeplink = title.strip(), deeplink.strip()
         if not title or not deeplink:
@@ -295,6 +257,9 @@ class LoyaltyAdmin:
             record = self.read_button(existing.record_id)
             self.verify_button(record, guid=guid, title=title, deeplink=deeplink)
             return "exists", record
+        if attempted:
+            raise LoyaltyAdminError("Прошлое создание кнопки не подтверждено, в экспорте её нет; повторный POST запрещён — "
+                                    "проверить в админке.", code="UNKNOWN_OUTCOME")
         status, _, html, _ = self._get(NEW_PATH)
         if status != 200:
             raise LoyaltyAdminError(f"Форма новой кнопки: HTTP {status}.", code="ADMIN_HTTP")
@@ -312,7 +277,15 @@ class LoyaltyAdmin:
         if m:
             record_id = int(m.group(1))
         else:
-            found = self.find_button(guid)
+            # Успешное создание может уйти редиректом на /admin/welcome без ID; запись появляется в экспорте не сразу —
+            # до 4 поисков с паузой 0,6 с (как у ДИКСИ). Сбой экспорта — сразу остановка, повторный POST запрещён.
+            found = None
+            for attempt in range(4):
+                found = self.find_button(guid)
+                if found is not None:
+                    break
+                if attempt < 3:
+                    self.sleep(0.6)
             if found is None:
                 raise LoyaltyAdminError("После создания кнопка не найдена по GUID; повторный POST запрещён.", code="UNKNOWN_OUTCOME")
             record_id = found.record_id

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Запускает Елена на ru:  /srv/cvm_portal/manzana-setup/set-secrets.sh
 # 1) создаёт в базе портала роль cvm_manzana_ro только на чтение нужных колонок cvm.promo и cvm.push (случайный пароль);
+#    в базе списков (cvm-lists-db) ставит пароль роли lists_manzana — её создаёт миграция портала db/lists/002_manzana.sql;
 # 2) спрашивает адреса и учётки Manzana (пароли — без отображения; пустой ввод оставляет прежнее значение);
 # 3) пишет /srv/cvm_portal/manzana.env (права 600) по образцу manzana.env.example. На экран пароли не выводятся.
 # Повторный запуск безопасен: пароль роли меняется, остальные значения — только те, что ввели заново.
@@ -41,7 +42,8 @@ begin
   select string_agg(column_name, ', ') into cols from information_schema.columns
    where table_schema = 'cvm' and table_name = 'promo' and column_name in
    ('number','title','setup','segments_raw','channels','start_date','end_date','description','mechanic','mechanic_online',
-    'category','bonus_expiry','coupon','coupon_name','slip_text','button','discount_sum','restrictions','status','updated_by');
+    'category','bonus_expiry','coupon','coupon_name','slip_text','button','coupon_layout_url','discount_sum','restrictions',
+    'status','updated_by');
   execute format('grant select (%s) on cvm.promo to cvm_manzana_ro', cols);
   select string_agg(column_name, ', ') into cols from information_schema.columns
    where table_schema = 'cvm' and table_name = 'push' and column_name in
@@ -50,6 +52,17 @@ begin
   execute format('grant select (%s) on cvm.push to cvm_manzana_ro', cols);
 end \$\$;
 SQL
+
+# База списков: роль lists_manzana создаёт миграция 002_manzana.sql (db/lists/migrate.sh); здесь только пароль. Пароль идёт
+# в psql через stdin — в списке процессов его нет. Роли ещё нет — списки и кампании робота ждут, остальное работает.
+LISTS_PW=""
+if [ "$(docker exec -u postgres cvm-lists-db psql -q -X -At -d cvm_lists -c "select 1 from pg_roles where rolname = 'lists_manzana'" 2>/dev/null)" = "1" ]; then
+  LISTS_PW="$(openssl rand -hex 24)"
+  printf "alter role lists_manzana with login password '%s' connection limit 2;\n" "$LISTS_PW" \
+    | docker exec -i -u postgres cvm-lists-db psql -q -X -v ON_ERROR_STOP=1 -d cvm_lists
+else
+  echo "в базе списков нет роли lists_manzana — сначала миграция 002_manzana.sql (db/lists/migrate.sh); списки робота ждут" >&2
+fi
 
 echo "Доступы Manzana (пустой ввод — оставить прежнее значение; пока их нет — просто Enter):"
 MC_URL="$(ask MC_URL 'Manzana Campaign, адрес (https://…)')"
@@ -83,7 +96,6 @@ BROWSER_PROFILE_DIR=/profile
 BROWSER_HEADLESS=${OLD[BROWSER_HEADLESS]:-1}
 BROWSER_TIMEOUT_SEC=${OLD[BROWSER_TIMEOUT_SEC]:-120}
 BROWSER_SCREENSHOT_ON_ERROR=${OLD[BROWSER_SCREENSHOT_ON_ERROR]:-1}
-LISTS_STORAGE=/data
 LISTS_STATE=/state
 RETENTION_DAYS=${OLD[RETENTION_DAYS]:-14}
 PG_HOST=cvm-db
@@ -91,12 +103,19 @@ PG_PORT=5432
 PG_DB=$POSTGRES_DB
 PG_USER=cvm_manzana_ro
 PG_PASSWORD=$PG_PW
+LISTS_PG_HOST=cvm-lists-db
+LISTS_PG_PORT=5432
+LISTS_PG_DB=cvm_lists
+LISTS_PG_USER=lists_manzana
+LISTS_PG_PASSWORD=$LISTS_PW
 NOTIFY_TO=$NOTIFY_TO
 ENV
 # Ключи прежнего файла, которых нет в шаблоне (селекторы формы входа, адреса API, настройки списков), сохраняются как были.
+# LISTS_STORAGE и LISTS_WORKDIR — от схемы с SFTP-обменом (до 20.10.2026), роботу больше не нужны.
 for k in "${!OLD[@]}"; do
+  case "$k" in LISTS_STORAGE|LISTS_WORKDIR) continue ;; esac
   grep -q "^$k=" "$OUT.tmp" || printf '%s=%s\n' "$k" "${OLD[$k]}" >> "$OUT.tmp"
 done
 mv "$OUT.tmp" "$OUT"
 chmod 600 "$OUT"
-echo "готово: $OUT записан (600), роль cvm_manzana_ro в базе портала создана. MANZANA_SETUP_ENABLED=$ENABLED — включение робота только руками в этом файле."
+echo "готово: $OUT записан (600), роль cvm_manzana_ro в базе портала создана$([ -n "$LISTS_PW" ] && echo ', пароль lists_manzana в базе списков задан'). MANZANA_SETUP_ENABLED=$ENABLED — включение робота только руками в этом файле."

@@ -23,8 +23,9 @@ from urllib.parse import urlparse
 
 APP_ORIGIN_DEFAULT = "https://campaign.manzanagroup.ru"
 API_PREFIX_DEFAULT = "https://apicampaign.manzanagroup.ru/v1/dixy"
+# origin/referer — как у ДИКСИ (lib/manzana/client.py): браузер сам ставит их запросам вкладки, а APIRequestContext — нет.
 REUSABLE_HEADER_NAMES = frozenset({"accept", "auth", "authorization", "entityfornodeid", "entityfornodetype",
-                                   "groupingid", "x-requested-with", "x-csrf-token", "csrf-token"})
+                                   "groupingid", "x-requested-with", "x-csrf-token", "csrf-token", "origin", "referer"})
 LOYALTY_CONTEXT_PREFIXES = ("/mlp/ml/entity", "/mlp/ml/relationship", "/mlp/ml/metadata", "/mlp/ml/action")
 BOOTSTRAP_PATHS = {"manzana_campaign": "/templates/push", "manzana_loyalty": "/loyalty/contacts/clients"}
 

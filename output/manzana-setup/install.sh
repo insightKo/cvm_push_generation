@@ -18,10 +18,7 @@ set -euo pipefail
 cd /srv/cvm_portal/manzana-setup
 chmod 755 set-secrets.sh
 
-# Тот же системный пользователь, что у хранилища списков (uid 10010): робот читает inbox/ и пишет receipts/ как партнёр.
-getent passwd cvm-lists >/dev/null || { echo "нет пользователя cvm-lists — сначала tools/campaign-lists/install.sh"; exit 1; }
-test -d /srv/cvm_lists/lists || { echo "нет /srv/cvm_lists/lists — сначала tools/campaign-lists/install.sh"; exit 1; }
-# Журнал и отметки робота — отдельно от журнала задания списков.
+# Списки робот берёт из базы списков (cvm-lists-db), хранилище SFTP-обмена ему не нужно. Журнал и отметки — свои, uid 10010.
 sudo install -d -m 700 -o 10010 -g 10010 /srv/cvm_portal/manzana-state
 # Профиль Chromium (вход робота в Manzana).
 sudo install -d -m 755 -o root -g root /srv/cvm_portal/manzana
@@ -39,6 +36,6 @@ if [ "$ENABLE" = "--enable" ]; then
   sudo systemctl enable --now cvm-manzana-setup.timer
   systemctl list-timers cvm-manzana-setup.timer --no-pager
 else
-  echo "таймер не включён; проверка: docker run --rm --network app_default --env-file /srv/cvm_portal/manzana.env -v /srv/cvm_lists/lists:/data -v /srv/cvm_portal/manzana-state:/state cvm-manzana-setup:latest --check"
+  echo "таймер не включён; проверка: docker run --rm --network app_default --env-file /srv/cvm_portal/manzana.env -v /srv/cvm_portal/manzana-state:/state cvm-manzana-setup:latest --check"
 fi
 REMOTE

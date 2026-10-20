@@ -1,0 +1,10 @@
+--- a/db/lists/setup.sh
++++ b/db/lists/setup.sh
+@@ -71,6 +71,7 @@
+   echo "# Создаётся db/lists/setup.sh — руками не править (адреса сервера MCI: setup.sh --mci-ip …)."
+   echo "local    all        postgres                 trust"
+   echo "host     cvm_lists  lists_api  samenet       scram-sha-256"
++  echo "host     cvm_lists  lists_manzana samenet    scram-sha-256"
+   for ip in $MCI_IPS; do
+     echo "hostssl  cvm_lists  mci        $ip/32  scram-sha-256"
+   done

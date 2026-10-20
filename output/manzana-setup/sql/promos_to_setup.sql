@@ -5,6 +5,7 @@
 -- PROMO_COLUMNS). Списков CRM_GUID здесь нет и быть не может.
 select number, title, setup, segments_raw, channels, start_date, end_date,
        description, mechanic, mechanic_online, category, bonus_expiry, coupon, coupon_name, slip_text, button,
+       coupon_layout_url,
        discount_sum, restrictions, coalesce(updated_by, 'CVM offline') as approved_by
 from cvm.promo
 where status = 'approved'

@@ -15,8 +15,8 @@ lib/manzana/mlp_mutations.py, lib/coupon_launch/coupon.py). Чужой код н
      остаётся CampaignId черновика («Информационные купоны»); решение Елены 20.10.2026 (1а): переносим исходную
      логику ДИКСИ как есть, название кампании робот сейчас не передаёт;
   4. скрытое правило: один PUT полного набора атрибутов (Name, ExternalId ≤ 47, Description, DateFrom = min(сегодня,
-     старт) 00:00 МСК, DateTo = окончание 23:59, PrivateOfficeLogoUrl (только при ссылке на картинку; у портала
-     её пока нет — картинку в Manzana добавляет человек), CanDisplayInPrivateOffice = акцептный,
+     старт) 00:00 МСК, DateTo = окончание 23:59, PrivateOfficeLogoUrl (только при https-ссылке из «ССЫЛКА на макет
+     купона», coupon_layout_url; пусто — картинку в Manzana добавляет человек), CanDisplayInPrivateOffice = акцептный,
      PrivateOfficeDisplayType 1, FilterByContactListsType 4, FilterByChequesType 3, CampaignId, IsActive false);
      занятое другим правилом Name/ExternalId — остановка (автопереименование не делаем);
   5. связи: MarketingList/Include «Тестовая группа запуски», ChequeFilter/Exclude «DIXY_ВСЕ МАГАЗИНЫ»,
@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -42,11 +43,27 @@ from zoneinfo import ZoneInfo
 
 MSK = ZoneInfo("Europe/Moscow")
 RULE = "ChargeRuleBaseView"
+# Статусы реестра, при которых тестовый показ больше не трогается: test_active, бой (live) и прерванный перевод в бой —
+# иначе таймер снова скрыл бы и выключил уже боевой купон.
+DONE_STATUSES = ("test_active", "live", "publish_failed")
 TEST_LIST, CHEQUE_FILTER, PARTNER = "Тестовая группа запуски", "DIXY_ВСЕ МАГАЗИНЫ", "DIXY PARTNER"
 EXTERNAL_ID_MAX, COUPON_EXTERNAL_ID_MAX = 50, 47
 LIST_COLUMNS = "Name,ExternalId,PartnerId,MemberType,IsDynamic,IncludeInApiResponse"
 FIND_COLUMNS = {"MarketingList": LIST_COLUMNS, "ChequeFilter": "Name,IsActive,ExternalId", "Partner": "Name,IsActive",
                 "Campaign": "Name,ExternalId,IsActive,ActualStartOn,ActualEndOn,MechanicType", RULE: "Name,ExternalId"}
+
+
+_SECRET_NAMES = r"auth|authorization|groupingid|x-csrf-token|csrf-token|x-api-key|api-key|token|access_token|password|passwd"
+_COOKIE_RE = re.compile(r"(?i)(['\"]?\b(?:set-)?cookie['\"]?\s*[:=]\s*)[^\n]*")
+_SECRET_HEADER_RE = re.compile(rf"(?i)(['\"]?\b(?:{_SECRET_NAMES})['\"]?\s*[:=]\s*['\"]?)(?:(?:bearer|basic)\s+)?[^\s,;'\"&]+")
+
+
+def error_text(exc: BaseException, limit: int = 500) -> str:
+    """Текст ошибки для журнала и реестра: Playwright дописывает «Call log» со всеми заголовками запроса (auth, cookie) —
+    он отрезается, оставшиеся значения секретных заголовков маскируются."""
+    text = f"{type(exc).__name__}: {exc}".split("Call log", 1)[0].rstrip()
+    text = _COOKIE_RE.sub(lambda m: m.group(1) + "<скрыто>", text)  # cookie — вся строка: сессия бывает не первой парой
+    return _SECRET_HEADER_RE.sub(lambda m: m.group(1) + "<скрыто>", text)[:limit]
 
 
 class CouponError(RuntimeError):
@@ -107,7 +124,7 @@ def external_id_of(title: str) -> str:
     base = str(title or "").strip()
     if not base:
         raise CouponError("Пустой заголовок купона.", code="SPEC_INVALID")
-    return base[:COUPON_EXTERNAL_ID_MAX]
+    return base[:COUPON_EXTERNAL_ID_MAX].rstrip()  # обрезка не должна кончаться пробелом: Manzana может его срезать
 
 
 # ---------- MLP API ----------
@@ -157,8 +174,11 @@ class Mlp:
             raise CouponError(f"Не найден {entity} «{value}».", code="NOT_FOUND")
         return matches[0] if matches else None
 
+    def reference_items(self, entity: str, ident: int, target: str, mark: str) -> list[dict[str, Any]]:
+        return self.paged(f"/mlp/ml/relationship/{entity}/{ident}/{target}/{mark}", "Name,ExternalId")
+
     def references(self, entity: str, ident: int, target: str, mark: str) -> set[int]:
-        return {entity_id(v) for v in self.paged(f"/mlp/ml/relationship/{entity}/{ident}/{target}/{mark}", "Name,ExternalId")}
+        return {entity_id(v) for v in self.reference_items(entity, ident, target, mark)}
 
     def associate(self, entity: str, ident: int, target: str, mark: str, ref_id: int, *, attempts: int = 4) -> None:
         if ref_id in self.references(entity, ident, target, mark):
@@ -176,6 +196,14 @@ class Mlp:
                 self.sleep(0.4)
         raise CouponError(f"Связь {target}/{mark} с ID={ref_id} не подтверждена.", code="UNKNOWN_OUTCOME") from failure
 
+    def _confirm_read(self, ident: int) -> dict[str, Any] | None:
+        """Чтение для подтверждения записи: разовый сбой GET (5xx, таймаут) не решает исход — попытка повторится
+        (у ДИКСИ catch_read_errors, lib/manzana/mlp_mutations.py)."""
+        try:
+            return self.read(RULE, ident)
+        except Exception:  # noqa: BLE001
+            return None
+
     def save(self, ident: int, expected: dict[str, Any], *, attempts: int = 4) -> dict[str, Any]:
         """PUT полного набора атрибутов (живые + ожидаемые) один раз; без изменений — без записи."""
         current = self.read(RULE, ident)
@@ -191,12 +219,13 @@ class Mlp:
             check_success(self.api.put_json("/mlp/ml/entity", payload))
         except Exception as exc:  # noqa: BLE001
             failure = exc
-        last: list[str] = []
+        last: list[str] = ["чтение не удалось"]
         for attempt in range(attempts):
-            current = self.read(RULE, ident)
-            last = [k for k, v in expected.items() if k not in attrs(current) or not field_equal(k, attrs(current).get(k), v)]
-            if not last:
-                return current
+            current = self._confirm_read(ident)
+            if current is not None:
+                last = [k for k, v in expected.items() if k not in attrs(current) or not field_equal(k, attrs(current).get(k), v)]
+                if not last:
+                    return current
             if attempt < attempts - 1:
                 self.sleep(0.4)
         raise CouponError("Поля купона не прошли проверку чтением: " + ", ".join(last), code="UNKNOWN_OUTCOME") from failure
@@ -211,8 +240,8 @@ class Mlp:
         except Exception as exc:  # noqa: BLE001
             failure = exc
         for attempt in range(attempts):
-            current = self.read(RULE, ident)
-            if api_bool(attrs(current).get("IsActive")) == active:
+            current = self._confirm_read(ident)
+            if current is not None and api_bool(attrs(current).get("IsActive")) == active:
                 return current
             if attempt < attempts - 1:
                 self.sleep(0.5)
@@ -225,9 +254,22 @@ class Mlp:
             raise CouponError("Manzana не вернула UserID/DepartmentID учётки робота.", code="API_SHAPE")
         return user, dept
 
+    def find_list_without_fulltext(self, name: str, external: str) -> dict[str, Any] | None:
+        """Полный перебор МС без полнотекстового поиска — только чтение; индекс поиска может не видеть свежий список
+        (так сверяет и ДИКСИ, lib/coupons/marketing_lists.py)."""
+        items = self.paged("/mlp/ml/entity/MarketingList", FIND_COLUMNS["MarketingList"])
+        by_name = [i for i in items if str(attrs(i).get("Name") or "").strip().casefold() == name.casefold()]
+        by_id = [i for i in items if str(attrs(i).get("ExternalId") or "").strip().casefold() == external.casefold()]
+        if len(by_name) > 1 or len(by_id) > 1:
+            raise CouponError(f"Несколько MarketingList с Name/ExternalId «{name}».", code="CONFLICT")
+        if by_name and by_id and entity_id(by_name[0]) != entity_id(by_id[0]):
+            raise CouponError(f"Имя и ExternalId списка «{name}» указывают на разные списки.", code="CONFLICT")
+        return (by_id or by_name or [None])[0]
+
     def ensure_list(self, external_base: str, partner: dict[str, Any], *, name_suffix: str, external_suffix: str,
-                    before_create: Callable[[], None] = lambda: None) -> dict[str, Any]:
-        """МС «<ExternalId> Исключаемый|Включаемый» / «<ExternalId>_ex|_in»: найти по ExternalId и Name, иначе создать один раз."""
+                    before_create: Callable[[], None] = lambda: None, attempted: bool = False) -> dict[str, Any]:
+        """МС «<ExternalId> Исключаемый|Включаемый» / «<ExternalId>_ex|_in»: найти по ExternalId и Name, иначе создать один раз.
+        attempted — прошлый прогон уже отправлял POST этого списка (отметка в реестре): тогда только поиск, без POST."""
         external, name = external_base + external_suffix, external_base + name_suffix
         if len(external) > EXTERNAL_ID_MAX:
             raise CouponError("ExternalId списка длиннее 50 знаков.", code="SPEC_INVALID")
@@ -236,9 +278,14 @@ class Mlp:
         if by_id is not None and by_name is not None and entity_id(by_id) != entity_id(by_name):
             raise CouponError(f"Имя и ExternalId списка «{name}» указывают на разные списки.", code="CONFLICT")
         result = by_id or by_name
+        if result is None and attempted:
+            result = self.find_list_without_fulltext(name, external)
+            if result is None:
+                raise CouponError(f"Прошлое создание списка «{name}» не подтверждено, список не найден; повторный POST запрещён — "
+                                  "проверить в Manzana.", code="UNKNOWN_OUTCOME")
         if result is None:
-            before_create()
             user, dept = self.access_ids()
+            before_create()  # отметка — прямо перед POST: сбой чтения учётки выше не блокирует задачу навсегда
             payload = {"name": "MarketingList", "businessUnitId": dept, "ownerId": user, "createdBy": user, "attributes": {
                 "Name": name, "ExternalId": external,
                 "PartnerId": {"id": entity_id(partner), "label": attrs(partner)["Name"], "name": "Partner"},
@@ -270,6 +317,8 @@ class Mlp:
                         break
                     if attempt < 39:
                         self.sleep(0.5)
+            if result is None:
+                result = self.find_list_without_fulltext(name, external)
             if result is None:
                 raise CouponError(f"Создание списка «{name}» не подтверждено чтением; повторный POST запрещён.", code="UNKNOWN_OUTCOME") from failure
         actual = attrs(self.read("MarketingList", entity_id(result)))
@@ -310,22 +359,34 @@ class CouponSpec:
         out = {"Name": self.title, "ExternalId": self.external_id, "Description": self.description, "DateFrom": date_from,
                "DateTo": date_to, "CanDisplayInPrivateOffice": self.accept, "PrivateOfficeDisplayType": 3 if visible else 1,
                "FilterByContactListsType": 4, "FilterByChequesType": 3, "CampaignId": campaign_ref, "IsActive": bool(active)}
-        # Картинка — только если ссылка есть: у портала колонки картинки пока нет, а пустая строка в PUT могла бы
-        # вернуться из API как null и навсегда «не пройти проверку чтением». Без ссылки поле черновика не трогаем.
+        # Картинка — только если есть https-ссылка («ССЫЛКА на макет купона», cvm.promo.coupon_layout_url): пустая строка
+        # в PUT могла бы вернуться из API как null и навсегда «не пройти проверку чтением». Без ссылки поле черновика не трогаем.
         if self.image_url:
             out["PrivateOfficeLogoUrl"] = self.image_url
         return out
 
 
 def parse_button(value: str, default_title: str = "В КАТАЛОГ", default_url: str = "dixyapp://app/catalog") -> tuple[str, str]:
-    """Колонка «Кнопка» вкладки: «В КАТАЛОГ dixyapp://app/products_list?id=123», «подборка», пусто."""
+    """Колонка «Кнопка» вкладки «CVM offline»: «<текст> <ссылка>», ссылка — до конца строки и может содержать пробелы
+    («Выбрать dixyapp://app/products_list?id=729&name=Бытовая химия» — так ссылки строит и ДИКСИ, lib/loyalty_admin/
+    product_categories.py). Пусто — кнопка по умолчанию, как у ДИКСИ; один текст «В каталог» — каталог. Текст без
+    ссылки («подборка», «нужен диплинк», «ВЫБРАТЬ», «ТОВАРЫ ДЛЯ ДЕТЕЙ») — ссылки ещё нет: остановка без записи,
+    ссылку не придумываем (кнопка «подборка» с каталогом ушла бы клиентам)."""
     text = " ".join(str(value or "").split())
     if not text:
         return default_title, default_url
-    parts = text.split(" ")
-    url = next((p for p in parts if p.lower().startswith("dixyapp://") or p.lower().startswith("https://")), "")
-    title = " ".join(p for p in parts if p != url).strip() or default_title
-    return title, (url or default_url)
+    low = text.lower()
+    at = min((i for i in (low.find("dixyapp://"), low.find("https://")) if i >= 0), default=-1)
+    if at < 0:
+        if low == default_title.lower():
+            return default_title, default_url
+        raise CouponError(f"В «Кнопке» нет ссылки («{text[:60]}»): нужна ссылка dixyapp://…", code="BUTTON_NO_LINK")
+    title, url = text[:at].strip(), text[at:].strip()
+    head = url.split(" ", 1)[0]
+    if " " in url and "name=" not in head:
+        # пробел допустим только в хвосте name=<Имя подборки>; «ссылка + текст» или приписка после ссылки — не придумываем
+        raise CouponError(f"«Кнопка»: после ссылки идёт текст («{text[:60]}»); нужна строка «<текст> <ссылка>».", code="BUTTON_INVALID")
+    return (title or default_title), url
 
 
 def spec_from_promo(promo: dict[str, Any], *, campaign_name: str = "") -> CouponSpec:
@@ -364,6 +425,10 @@ class DraftRegistry:
         data = json.loads(self.path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise CouponError("coupon_drafts.json должен быть списком.", code="DRAFTS_INVALID")
+        for field in ("rule_id", "guid"):
+            values = [str(d.get(field) or "").strip().lower() for d in data if str(d.get(field) or "").strip()]
+            if len(values) != len(set(values)):
+                raise CouponError(f"В coupon_drafts.json повторяется {field}: один черновик достался бы двум акциям.", code="DRAFTS_INVALID")
         return data
 
     def _save(self, items: list[dict[str, Any]]) -> None:
@@ -396,6 +461,10 @@ class CouponLedger:
             db.execute("""create table if not exists coupons (key text primary key, promo integer not null, rule_id integer, guid text,
                 status text not null, stage text not null default '', campaign_id integer, excluded_list_id integer, included_list_id integer,
                 button_id integer, name text, error text not null default '', created_at text not null, updated_at text not null)""")
+            # Отметки отправленных создающих запросов («_ex», «_in», «button»): не стираются ошибкой шага, повтор по ним
+            # только ищет созданное и не шлёт POST второй раз.
+            if "create_marks" not in {r[1] for r in db.execute("pragma table_info(coupons)")}:
+                db.execute("alter table coupons add column create_marks text not null default ''")
 
     def _db(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, isolation_level=None, timeout=30)
@@ -410,6 +479,28 @@ class CouponLedger:
         with self._db() as db:
             row = db.execute("select * from coupons where key = ?", (key,)).fetchone()
             return dict(row) if row else None
+
+    def key_of_rule(self, rule_id: int) -> str | None:
+        with self._db() as db:
+            row = db.execute("select key from coupons where rule_id = ? order by created_at limit 1", (rule_id,)).fetchone()
+            return row["key"] if row else None
+
+    def keys_of_promo(self, promo: int) -> list[str]:
+        with self._db() as db:
+            return [r["key"] for r in db.execute("select key from coupons where promo = ? and rule_id is not null order by created_at", (promo,))]
+
+    def marks(self, key: str) -> set[str]:
+        row = self.get(key)
+        return {m for m in str((row or {}).get("create_marks") or "").split(",") if m}
+
+    def mark_create(self, key: str, mark: str) -> None:
+        """Отметка ДО создающего запроса; строка ключа уже есть (draft_reserved)."""
+        with self._db() as db:
+            row = db.execute("select create_marks from coupons where key = ?", (key,)).fetchone()
+            if row is None:
+                raise CouponError(f"Нет строки реестра {key} для отметки {mark}.", code="LEDGER")
+            marks = {m for m in str(row["create_marks"] or "").split(",") if m} | {mark}
+            db.execute("update coupons set create_marks = ?, updated_at = ? where key = ?", (",".join(sorted(marks)), self._now(), key))
 
     def upsert(self, key: str, *, promo: int, status: str, **fields: Any) -> None:
         now = self._now()
@@ -427,8 +518,8 @@ def setup_coupon_test(mlp: Mlp, admin: Any, spec: CouponSpec, *, key: str, promo
                       today: dt.date | None = None) -> dict[str, Any]:
     today = today or dt.datetime.now(MSK).date()
     saved = ledger.get(key)
-    if saved and saved["status"] == "test_active":
-        return {"key": key, "rule_id": saved["rule_id"], "guid": saved["guid"], "status": "test_active", "already_done": True}
+    if saved and saved["status"] in DONE_STATUSES:
+        return {"key": key, "rule_id": saved["rule_id"], "guid": saved["guid"], "status": saved["status"], "already_done": True}
     stage = "start"
     try:
         stage = "справочники"
@@ -438,10 +529,27 @@ def setup_coupon_test(mlp: Mlp, admin: Any, spec: CouponSpec, *, key: str, promo
         if not api_bool(attrs(cheque).get("IsActive")):
             raise CouponError("Фильтр чеков «DIXY_ВСЕ МАГАЗИНЫ» неактивен.", code="CONFLICT")
         stage = "черновик"
+        other = [k for k in ledger.keys_of_promo(promo) if k != key]
+        if other and not (saved and saved.get("rule_id")):
+            # Старт акции перенесли: купон уже заведён под прежним ключом (то же название — новый черновик упёрся бы в
+            # NAME_CONFLICT и был бы потрачен). Что делать с прежним правилом — решение человека.
+            raise CouponError(f"Купон акции {promo} уже заводился под ключом {other[-1]} (перенос старта); новый черновик не занят.",
+                              code="PROMO_MOVED")
         draft = drafts.reserve(key)
         rule_id, guid = int(draft["rule_id"]), str(draft["guid"]).strip().lower()
+        # Правило купона решает реестр coupons.sqlite3, а не только отметка used_by в файле черновиков (её можно потерять
+        # правкой файла): правило, уже записанное за другим ключом, второй акции не достаётся.
+        if saved and saved.get("rule_id") and int(saved["rule_id"]) != rule_id:
+            raise CouponError(f"Реестр черновиков выдал правило {rule_id}, а купон {key} уже на правиле {saved['rule_id']}.", code="CONFLICT")
+        owner = ledger.key_of_rule(rule_id)
+        if owner and owner != key:
+            raise CouponError(f"Правило {rule_id} уже у купона {owner}; отметка used_by в coupon_drafts.json потеряна.", code="CONFLICT")
         ledger.upsert(key, promo=promo, status="draft_reserved", rule_id=rule_id, guid=guid, name=spec.title, stage=stage)
         original = attrs(mlp.read(RULE, rule_id))
+        missing = [k for k in ("IsActive", "IsForCoupons", "ResultType", "Bonus", "CampaignId") if k not in original]
+        if missing:
+            raise CouponError(f"Правило {rule_id}: в ответе нет полей {missing}; тип черновика не подтверждён, ничего не изменено.",
+                              code="CONFLICT")
         if api_bool(original.get("IsForCoupons")) or str(original.get("ResultType")) != "1" or str(original.get("Bonus")) not in ("0", "0.0"):
             raise CouponError(f"Правило {rule_id} — не пустой инфокупон (IsForCoupons/ResultType/Bonus); ничего не изменено.", code="CONFLICT")
         initially_active = api_bool(original.get("IsActive"))
@@ -464,6 +572,17 @@ def setup_coupon_test(mlp: Mlp, admin: Any, spec: CouponSpec, *, key: str, promo
         extra = mlp.references(RULE, rule_id, "ChequeFilter", "Exclude") - {entity_id(cheque)}
         if extra:
             raise CouponError(f"У правила {rule_id} лишние ChequeFilter/Exclude {sorted(extra)}; не удаляем.", code="CONFLICT")
+        stage = "чужие связи"
+        # свои списки купона узнаются по ExternalId, имени или ID из реестра — ответ связей может не нести ExternalId
+        own = {spec.external_id.casefold() + "_ex", spec.external_id.casefold() + "_in",
+               (spec.external_id + " Исключаемый").casefold(), (spec.external_id + " Включаемый").casefold()}
+        own_ids = {int(v) for v in ((saved or {}).get("excluded_list_id"), (saved or {}).get("included_list_id")) if v}
+        foreign = [entity_id(i) for mark in ("Include", "Exclude") for i in mlp.reference_items(RULE, rule_id, "MarketingList", mark)
+                   if entity_id(i) != entity_id(tester) and entity_id(i) not in own_ids
+                   and not ({str(attrs(i).get(k) or "").strip().casefold() for k in ("ExternalId", "Name")} & own)]
+        if foreign:
+            # Черновик с чужим МС показал бы тестовый купон реальным клиентам; связи не удаляем — решение человека.
+            raise CouponError(f"У правила {rule_id} чужие связи MarketingList {sorted(set(foreign))}; не удаляем.", code="CONFLICT")
         stage = "скрытое правило"
         hidden = spec.attributes(campaign_ref=campaign_ref, visible=False, active=False, today=today)
         conflicts = [entity_id(i) for q in {spec.title, spec.external_id}
@@ -479,19 +598,20 @@ def setup_coupon_test(mlp: Mlp, admin: Any, spec: CouponSpec, *, key: str, promo
         stage = "связи"
         mlp.associate(RULE, rule_id, "MarketingList", "Include", entity_id(tester))
         mlp.associate(RULE, rule_id, "ChequeFilter", "Exclude", entity_id(cheque))
+        marks = ledger.marks(key)
         excluded = mlp.ensure_list(spec.external_id, partner, name_suffix=" Исключаемый", external_suffix="_ex",
-                                   before_create=lambda: ledger.upsert(key, promo=promo, status="hidden_saved", stage="создание _ex"))
+                                   before_create=lambda: ledger.mark_create(key, "_ex"), attempted="_ex" in marks)
         mlp.associate(RULE, rule_id, "MarketingList", "Exclude", entity_id(excluded))
         included = None
         if spec.accept:
             included = mlp.ensure_list(spec.external_id, partner, name_suffix=" Включаемый", external_suffix="_in",
-                                       before_create=lambda: ledger.upsert(key, promo=promo, status="hidden_saved", stage="создание _in"))
+                                       before_create=lambda: ledger.mark_create(key, "_in"), attempted="_in" in marks)
             mlp.associate(RULE, rule_id, "MarketingList", "Include", entity_id(included))
         ledger.upsert(key, promo=promo, status="links_done", excluded_list_id=entity_id(excluded),
                       included_list_id=entity_id(included) if included else None, stage=stage)
         stage = "кнопка"
         state, record = admin.ensure_button(guid=guid, title=spec.button_title, deeplink=spec.button_url,
-                                            before_create=lambda: ledger.upsert(key, promo=promo, status="links_done", stage="создание кнопки"))
+                                            before_create=lambda: ledger.mark_create(key, "button"), attempted="button" in marks)
         ledger.upsert(key, promo=promo, status="button_done", button_id=record.record_id, stage=stage)
         stage = "проверка перед показом"
         _verify(mlp, rule_id, hidden, tester, cheque, excluded, included)
@@ -509,9 +629,11 @@ def setup_coupon_test(mlp: Mlp, admin: Any, spec: CouponSpec, *, key: str, promo
                 "accept": spec.accept, "status": "test_active",
                 "rule_url": f"https://campaign.manzanagroup.ru/loyalty/marketing/rules/ChargeRuleBaseView/edit/{rule_id}",
                 "deeplink": f"dixyapp://app/coupons?id={guid}&type=activated"}
-    except CouponError as exc:
+    except Exception as exc:  # noqa: BLE001 — и ошибки админки/API/браузера видны в реестре, исключение идёт дальше
         current = ledger.get(key)
-        ledger.upsert(key, promo=promo, status=(current or {}).get("status") or "failed", stage=stage, error=f"{stage}: {exc}")
+        if current is not None or isinstance(exc, CouponError):
+            ledger.upsert(key, promo=promo, status=(current or {}).get("status") or "failed", stage=stage,
+                          error=f"{stage}: {error_text(exc)}")
         raise
 
 
@@ -522,10 +644,10 @@ def _verify(mlp: Mlp, rule_id: int, expected: dict[str, Any], tester: dict, cheq
         raise CouponError("Проверка полей купона: " + ", ".join(diff), code="VERIFY")
     include = mlp.references(RULE, rule_id, "MarketingList", "Include")
     need = {entity_id(tester)} | ({entity_id(included)} if included else set())
-    if need - include:
-        raise CouponError(f"Нет связей Include {sorted(need - include)}.", code="VERIFY")
-    if entity_id(excluded) not in mlp.references(RULE, rule_id, "MarketingList", "Exclude"):
-        raise CouponError("Нет связи Exclude с исключаемым списком.", code="VERIFY")
+    if include != need:
+        raise CouponError(f"Связи Include {sorted(include)} вместо {sorted(need)}.", code="VERIFY")
+    if mlp.references(RULE, rule_id, "MarketingList", "Exclude") != {entity_id(excluded)}:
+        raise CouponError("Связь Exclude не равна исключаемому списку купона.", code="VERIFY")
     if mlp.references(RULE, rule_id, "ChequeFilter", "Exclude") != {entity_id(cheque)}:
         raise CouponError("ChequeFilter/Exclude не равен «DIXY_ВСЕ МАГАЗИНЫ».", code="VERIFY")
 
@@ -548,14 +670,23 @@ def publish_coupon(mlp: Mlp, *, rule_id: int, start_date: dt.date, list_name: st
         changes["FilterByContactListsType"] = audience_type
     ms = mlp.find("MarketingList", list_name) if audience_type == 4 else None
     need_link = ms is not None and entity_id(ms) not in mlp.references(RULE, rule_id, "MarketingList", "Include")
-    if changes or need_link:
-        if api_bool(live.get("IsActive")):
-            mlp.set_active(rule_id, False)
-        if changes:
-            mlp.save(rule_id, changes)
-        if ms is not None:
-            mlp.associate(RULE, rule_id, "MarketingList", "Include", entity_id(ms))
-    mlp.set_active(rule_id, True)
+    deactivated = False
+    try:
+        if changes or need_link:
+            if api_bool(live.get("IsActive")):
+                mlp.set_active(rule_id, False)
+                deactivated = True
+            if changes:
+                mlp.save(rule_id, changes)
+            if ms is not None:
+                mlp.associate(RULE, rule_id, "MarketingList", "Include", entity_id(ms))
+        mlp.set_active(rule_id, True)
+    except Exception as exc:
+        if deactivated:
+            # Купон выключен на середине правки: сам робот его не включает (состояние полей неполное), нужен повтор команды.
+            raise CouponError(f"Перевод в бой прерван после выключения купона {rule_id}: купон ВЫКЛЮЧЕН, повторить команду "
+                              f"({error_text(exc, 200)}).", code="PUBLISH_INTERRUPTED") from exc
+        raise
     live = attrs(mlp.read(RULE, rule_id))
     if not api_bool(live.get("IsActive")) or not field_equal("DateFrom", live.get("DateFrom"), date_from) \
             or str(live.get("FilterByContactListsType")) != str(audience_type) \
