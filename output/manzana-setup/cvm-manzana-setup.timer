@@ -1,0 +1,11 @@
+[Unit]
+Description=Каждые 15 минут заводить в Manzana согласованные акции, кампании и списки (обходной путь)
+
+[Timer]
+# Через 7 минут после задания списков (cvm-campaign-lists — :00/15): файл списка уже в inbox/, когда робот берёт акцию.
+OnCalendar=*:07/15
+Persistent=true
+Unit=cvm-manzana-setup.service
+
+[Install]
+WantedBy=timers.target

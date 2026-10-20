@@ -1,0 +1,33 @@
+[Unit]
+Description=Заведение в Manzana обходным путём: условия и купон (Online), кампания и сообщения (Campaign), список CRM_GUID
+Documentation=file:///srv/cvm_portal/manzana-setup/README.md
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# elena — в группе docker и владелец manzana.env; сам процесс в контейнере идёт под uid 10010 (cvm-lists): читает inbox/,
+# пишет receipts/ (как партнёр по обмену), журнал и отметки — в /state, профиль браузера — в /profile.
+# База портала — роль cvm_manzana_ro только на чтение (set-secrets.sh). К MCI задание не ходит.
+User=elena
+Group=elena
+ExecStartPre=-/usr/bin/docker rm -f cvm-manzana-setup
+# --init: tini первым процессом передаёт SIGTERM в python. Корень контейнера только чтение; Chromium пишет в /profile,
+# /tmp и /dev/shm (--shm-size: без него браузер падает на больших страницах).
+# --hostname: Chromium пишет имя хоста в замок профиля; с одинаковым именем он сам снимает замок мёртвого прогона.
+ExecStart=/usr/bin/docker run --rm --init --name cvm-manzana-setup --hostname cvm-manzana-setup \
+  --network app_default \
+  --env-file /srv/cvm_portal/manzana.env \
+  -v /srv/cvm_lists/lists:/data \
+  -v /srv/cvm_portal/manzana-state:/state \
+  -v /srv/cvm_portal/manzana/profile:/profile \
+  --read-only --tmpfs /tmp:size=256m --shm-size 512m \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --memory 2g --pids-limit 256 \
+  cvm-manzana-setup:latest --once
+TimeoutStartSec=14min
+ExecStop=-/usr/bin/docker stop -t 20 cvm-manzana-setup
+TimeoutStopSec=30
+ExecStopPost=-/usr/bin/docker rm -f cvm-manzana-setup
+Nice=10
