@@ -14,7 +14,7 @@
    2. dbo.I_ML_LIST_CHECK — новая таблица: результат каждой сверки (история, строка = акция × проверка).
    3. dbo.I_ML_LIST_MISSING — новая таблица: контакты, которых нет в списке Manzana,
       по последней проверке (перезаписывается каждый час), только для «загружен не полностью».
-   4. dbo.ml_list_check — новая процедура сверки; письмо при новом расхождении.
+   4. dbo.ml_list_check — процедура сверки (create or alter), без письма.
    5. Задание SQL Agent «CVM ML list check» — новое, каждый час в :20, один шаг exec dbo.ml_list_check.
 
    Не удаляется ничего. Пакеты integration.packet, интеграционные процедуры
@@ -30,9 +30,13 @@
    наших октябрьских списков нет, все акции выходили «без участников»); справочник списков —
    одна строка на ListId (было по ListId + instance_id — каждая акция писалась 6 раз).
 
+   20.10.2026 (утро, решение Елены): сверяются только свежие списки — пришедшие в Manzana
+   за последние 3 дня, и акции, стартующие сегодня или завтра (если их списка нет — «нет списка»).
+   Старые списки и тестовые 100000–100019 не сверяются. Письма нет: результат только в таблицах.
+
    Что сверяется:
-   - акции I_PROMO (ID_COMPANY = 1), которые уже идут или стартуют завтра и закончились
-     не раньше 7 дней назад;
+   - акции I_PROMO (ID_COMPANY = 1), у которых список появился в crmdata__List за последние
+     3 дня (первая загрузка ListId в mci_model), или старт сегодня / завтра;
    - наш список: I_PROMO_OFFER, CONTROL_GROUP = 0, ID_ORGANIZATION = 1, ID_CONTACT <> 0,
      любой LOAD_TO_ML (ушёл через ListsToML или через SFTP в Campaign);
    - список в Manzana: crmdata__List, имя начинается с «<номер акции>_» или «<номер акции>.»,
@@ -41,8 +45,7 @@
      (crmdata__ListMember — участники CRM-списков; наших октябрьских там нет, 19.10 проверено.)
    Статусы: загружен / загружен не полностью / список без участников / нет списка в Manzana /
    не выгружен из MCI (LOAD_TO_ML = 0 у всего списка) / ещё не выгружен (старт завтра, списка нет).
-   Письмо (raro@, ekor@manzanagroup.ru — как письмо об ошибке MCI Regular update) уходит,
-   когда у акции появился новый статус-расхождение; одно и то же расхождение повторно не шлётся.
+   Писем нет никому. Поле ALERTED в I_ML_LIST_CHECK остаётся, пишется 0.
    ===================================================================================== */
 
 use mci_model
@@ -129,29 +132,41 @@ go
 
 /* ---------- 4. Процедура сверки ---------- */
 create or alter procedure dbo.ml_list_check
-    @days_back  int = 7,   -- акции, закончившиеся не раньше чем столько дней назад
-    @days_ahead int = 1    -- и стартующие не позже чем через столько дней
+    @days int = 3          -- списки, пришедшие в Manzana за столько последних дней
 as
 begin
     set nocount on;
     set xact_abort on;
 
-    declare @now        datetime2(0)  = sysdatetime(),
-            @today      date          = cast(getdate() as date),
-            @recipients nvarchar(500) = N'raro@manzanagroup.ru;ekor@manzanagroup.ru;',
-            @rc         int;
+    declare @now   datetime2(0) = sysdatetime(),
+            @today date         = cast(getdate() as date);
+    declare @from  datetime     = dateadd(day, -@days, @today);
 
     declare @ml_data_dt datetime =
         (select max(dt_load) from dbo.loyalty__list_member_a with (nolock) where ID_COMPANY = 1);
 
-    -- 4.1 Акции окна
+    -- 4.0 Все списки Manzana: последняя версия каждого ListId + когда ListId впервые пришёл в mci_model.
+    --     Справочник лежит копией на каждом экземпляре (instance_id) — одна строка на ListId.
+    select x.ListId, x.ListName, x.ListGuid, x.dt_load, x.sys_change_operation, x.FIRST_DT,
+           ID_PROMO = try_cast(left(x.ListName, patindex(N'%[_.]%', x.ListName + N'_') - 1) as int)
+    into #ml_all
+    from (select l.ListId, l.ListName, l.ListGuid, l.dt_load, l.sys_change_operation,
+                 FIRST_DT = min(l.dt_load) over (partition by l.ListId),
+                 rn = row_number() over (partition by l.ListId order by l.last_version desc, l.dt_load desc)
+          from dbo.crmdata__List l with (nolock)
+          where l.ID_COMPANY = 1) x
+    where x.rn = 1;
+
+    -- 4.1 Акции: список пришёл в Manzana за последние @days дней, или старт сегодня / завтра
     select ID_PROMO, PROMO_NAME_ML = max(PROMO_NAME_ML), START_DATE = min(START_DATE), FINISH_DATE = max(FINISH_DATE)
     into #promo
     from dbo.I_PROMO with (nolock)
     where ID_COMPANY = 1
-      and START_DATE  <= dateadd(day, @days_ahead, @today)
-      and FINISH_DATE >= dateadd(day, -@days_back, @today)
+      and (   ID_PROMO in (select ID_PROMO from #ml_all where FIRST_DT >= @from and ID_PROMO is not null)
+           or START_DATE between @today and dateadd(day, 1, @today))
     group by ID_PROMO;
+
+    if not exists (select 1 from #promo) return;
 
     declare @pmin int = (select min(ID_PROMO) from #promo),
             @pmax int = (select max(ID_PROMO) from #promo);
@@ -168,17 +183,11 @@ begin
       and o.ID_CONTACT <> 0;
     create clustered columnstore index cci on #our;
 
-    -- 4.3 Списки Manzana: последняя версия каждого списка, не удалённый, номер акции из начала имени.
-    --     Справочник лежит копией на каждом экземпляре (instance_id) — берётся одна строка на ListId.
+    -- 4.3 Списки Manzana наших акций: не удалённые, номер акции из начала имени
     select x.ID_PROMO, x.ListId, x.ListName, x.ListGuid, x.dt_load
     into #ml_list
-    from (select l.ListId, l.ListName, l.ListGuid, l.dt_load, l.sys_change_operation,
-                 ID_PROMO = try_cast(left(l.ListName, patindex(N'%[_.]%', l.ListName + N'_') - 1) as int),
-                 rn = row_number() over (partition by l.ListId order by l.last_version desc, l.dt_load desc)
-          from dbo.crmdata__List l with (nolock)
-          where l.ID_COMPANY = 1) x
-    where x.rn = 1
-      and isnull(x.sys_change_operation, 'I') <> 'D'
+    from #ml_all x
+    where isnull(x.sys_change_operation, 'I') <> 'D'
       and x.ID_PROMO in (select ID_PROMO from #promo);
 
     -- 4.4 Участники списков — loyalty__list_member_a: list_id = ListId справочника, contact_id = ID_CONTACT.
@@ -242,12 +251,8 @@ begin
     set IS_PROBLEM = case when STATUS in (N'не выгружен из MCI', N'нет списка в Manzana',
                                           N'список без участников', N'загружен не полностью') then 1 else 0 end;
 
-    declare @prev datetime2(0) =
-        (select max(CHECK_DT) from dbo.I_ML_LIST_CHECK with (nolock) where CHECK_DT < @now);
-
     begin tran;
 
-    -- ALERTED = 1, если о том же расхождении письмо уже ушло в прошлой проверке
     insert into dbo.I_ML_LIST_CHECK
         (CHECK_DT, ID_COMPANY, ID_PROMO, PROMO_NAME_ML, START_DATE, FINISH_DATE, LOAD_TO_ML,
          OUR_CONTACTS, ML_LISTS, LIST_ID, LIST_GUID, LIST_NAME, LIST_DT_LOAD,
@@ -256,11 +261,7 @@ begin
            r.OUR_CONTACTS, r.ML_LISTS, r.LIST_ID, l.ListGuid, l.ListName, l.dt_load,
            r.ML_CONTACTS, r.MATCHED, r.OUR_CONTACTS - r.MATCHED, r.ML_CONTACTS - r.MATCHED,
            r.STATUS, r.IS_PROBLEM,
-           ALERTED = case when r.IS_PROBLEM = 1 and exists (
-                              select 1 from dbo.I_ML_LIST_CHECK pr with (nolock)
-                              where pr.CHECK_DT = @prev and pr.ID_PROMO = r.ID_PROMO
-                                and pr.STATUS = r.STATUS and pr.ALERTED = 1)
-                          then 1 else 0 end,
+           ALERTED = 0,
            @ml_data_dt
     from #res r
     join #promo p on p.ID_PROMO = r.ID_PROMO
@@ -275,39 +276,6 @@ begin
     where not exists (select 1 from #ml m where m.ID_PROMO = o.ID_PROMO and m.ID_CONTACT = o.ID_CONTACT);
 
     commit;
-
-    -- 4.6 Письмо: есть расхождение, о котором письмо ещё не уходило; в письме — все текущие расхождения
-    if exists (select 1 from dbo.I_ML_LIST_CHECK with (nolock)
-               where CHECK_DT = @now and IS_PROBLEM = 1 and ALERTED = 0)
-    begin
-        declare @body nvarchar(max) =
-            N'Сверка списков CVM со списками Manzana на ' + convert(nvarchar(16), @now, 120) + N'.' + char(13) + char(10)
-          + N'Участники списков Manzana в mci_model загружены по ' + isnull(convert(nvarchar(16), @ml_data_dt, 120), N'—') + N'.'
-          + char(13) + char(10) + char(13) + char(10)
-          + (select string_agg(cast(
-                   cast(c.ID_PROMO as nvarchar(10)) + N' ' + isnull(c.PROMO_NAME_ML, N'') + N' — ' + c.STATUS
-                 + N'. Наш список: ' + cast(c.OUR_CONTACTS as nvarchar(12))
-                 + N', в Manzana: ' + cast(c.MATCHED as nvarchar(12))
-                 + N', нет в Manzana: ' + cast(c.MISSING as nvarchar(12))
-                 + isnull(N'. Список ' + cast(c.LIST_ID as nvarchar(12)) + N' ' + c.LIST_NAME
-                          + N', GUID ' + cast(c.LIST_GUID as nvarchar(36)), N'')
-                 as nvarchar(max)), char(13) + char(10)) within group (order by c.ID_PROMO)
-             from dbo.I_ML_LIST_CHECK c with (nolock)
-             where c.CHECK_DT = @now and c.IS_PROBLEM = 1);
-
-        exec @rc = msdb.dbo.sp_send_dbmail
-            @profile_name = N'Mail',
-            @recipients   = @recipients,
-            @subject      = N'Сверка списков CVM с Manzana: есть расхождения',
-            @body         = @body;
-
-        if @rc = 0
-            update dbo.I_ML_LIST_CHECK
-            set ALERTED = 1
-            where CHECK_DT = @now and IS_PROBLEM = 1;
-        else
-            throw 50001, N'ml_list_check: письмо не поставлено в очередь', 1;
-    end
 end
 go
 
