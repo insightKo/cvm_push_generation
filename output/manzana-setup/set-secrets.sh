@@ -42,7 +42,7 @@ begin
   select string_agg(column_name, ', ') into cols from information_schema.columns
    where table_schema = 'cvm' and table_name = 'promo' and column_name in
    ('number','title','setup','segments_raw','channels','start_date','end_date','description','mechanic','mechanic_online',
-    'category','bonus_expiry','coupon','coupon_name','slip_text','button','coupon_layout_url','discount_sum','restrictions',
+    'category','bonus_expiry','coupon','coupon_name','slip_text','button','coupon_layout_url','activation','promo_code','uses_limit','discount_sum','restrictions',
     'status','updated_by');
   execute format('grant select (%s) on cvm.promo to cvm_manzana_ro', cols);
   select string_agg(column_name, ', ') into cols from information_schema.columns

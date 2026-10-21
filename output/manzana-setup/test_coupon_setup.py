@@ -142,6 +142,10 @@ def test_spec_from_promo_and_button_parsing():
             cs.parse_button(no_link)
         assert e.value.code == "BUTTON_NO_LINK"
     assert cs.spec_from_promo(promo(coupon_name="Активируй 50р. монетами")).accept
+    # поле «Активация» из портала главнее слова: «да» — акцептный, «нет» и «промокод» — нет
+    assert cs.spec_from_promo(promo(activation="да")).accept
+    assert not cs.spec_from_promo(promo(coupon_name="Активируй 50р. монетами", activation="нет")).accept
+    assert not cs.spec_from_promo(promo(coupon_name="Активируй -13%", activation="промокод")).accept
     assert cs.spec_from_promo(promo(coupon_name="x" * 47 + "yyy")).external_id == "x" * 47
     for bad in ({"coupon_name": ""}, {"coupon_name": "--"}, {"slip_text": ""}, {"coupon_name": "a" * 101}, {"end_date": None}):
         with pytest.raises(cs.CouponError) as e:

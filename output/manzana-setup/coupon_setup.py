@@ -405,9 +405,14 @@ def spec_from_promo(promo: dict[str, Any], *, campaign_name: str = "") -> Coupon
     image = str(promo.get("coupon_layout_url") or "").strip()
     if image and not image.lower().startswith("https://"):
         image = ""
-    # Акцептный купон — тот, что клиент активирует («Активируй …» в названии или тексте); решение Елены 20.10.2026 (2а):
-    # пока по слову, дальше — признак из справочника механик (поле придёт из портала вместе с акцией).
-    accept = "активируй" in (title + " " + description).lower()
+    # Акцептный купон — тот, что клиент активирует кнопкой: поле акции «Активация» = «да» (справочник механик, решение
+    # Елены 21.10.2026; «нет» и «промокод» — не акцептный). Поле не заполнено — по слову «Активируй» в названии или тексте
+    # (решение 20.10.2026, 2а).
+    activation = str(promo.get("activation") or "").strip().lower()
+    if activation in ("да", "нет", "промокод"):
+        accept = activation == "да"
+    else:
+        accept = "активируй" in (title + " " + description).lower()
     return CouponSpec(title, description, start, end, accept, campaign_name, button_title, button_url, image)
 
 
