@@ -342,10 +342,18 @@ class CouponSpec:
     button_title: str = "В КАТАЛОГ"
     button_url: str = "dixyapp://app/catalog"
     image_url: str = ""
+    number: int = 0
+
+    # В Manzana название купона не может повторяться за всю историю (Елена 21.10.2026). Name = «Название информационного
+    # купона для МП» как есть — та же строка, что видит клиент: дата, механика, категория («С 22.10. по 25.10. дарим 100р.
+    # монетами с покупки чипсов»). Номер акции клиент не видит — он только во внутреннем ExternalId «<номер>_<название>».
+    @property
+    def name(self) -> str:
+        return self.title
 
     @property
     def external_id(self) -> str:
-        return external_id_of(self.title)
+        return external_id_of(f"{self.number}_{self.title}" if self.number else self.title)
 
     def period(self, today: dt.date) -> tuple[str, str]:
         start = min(today, self.start_date)
@@ -356,7 +364,7 @@ class CouponSpec:
 
     def attributes(self, *, campaign_ref: Any, visible: bool, active: bool, today: dt.date) -> dict[str, Any]:
         date_from, date_to = self.period(today)
-        out = {"Name": self.title, "ExternalId": self.external_id, "Description": self.description, "DateFrom": date_from,
+        out = {"Name": self.name, "ExternalId": self.external_id, "Description": self.description, "DateFrom": date_from,
                "DateTo": date_to, "CanDisplayInPrivateOffice": self.accept, "PrivateOfficeDisplayType": 3 if visible else 1,
                "FilterByContactListsType": 4, "FilterByChequesType": 3, "CampaignId": campaign_ref, "IsActive": bool(active)}
         # Картинка — только если есть https-ссылка («ССЫЛКА на макет купона», cvm.promo.coupon_layout_url): пустая строка
@@ -413,7 +421,12 @@ def spec_from_promo(promo: dict[str, Any], *, campaign_name: str = "") -> Coupon
         accept = activation == "да"
     else:
         accept = "активируй" in (title + " " + description).lower()
-    return CouponSpec(title, description, start, end, accept, campaign_name, button_title, button_url, image)
+    try:
+        number = int(promo.get("number") or 0)
+    except (TypeError, ValueError):
+        number = 0
+    spec = CouponSpec(title, description, start, end, accept, campaign_name, button_title, button_url, image, number)
+    return spec
 
 
 # ---------- реестр черновиков и журнал ----------
@@ -549,7 +562,7 @@ def setup_coupon_test(mlp: Mlp, admin: Any, spec: CouponSpec, *, key: str, promo
         owner = ledger.key_of_rule(rule_id)
         if owner and owner != key:
             raise CouponError(f"Правило {rule_id} уже у купона {owner}; отметка used_by в coupon_drafts.json потеряна.", code="CONFLICT")
-        ledger.upsert(key, promo=promo, status="draft_reserved", rule_id=rule_id, guid=guid, name=spec.title, stage=stage)
+        ledger.upsert(key, promo=promo, status="draft_reserved", rule_id=rule_id, guid=guid, name=spec.name, stage=stage)
         original = attrs(mlp.read(RULE, rule_id))
         missing = [k for k in ("IsActive", "IsForCoupons", "ResultType", "Bonus", "CampaignId") if k not in original]
         if missing:
@@ -590,12 +603,12 @@ def setup_coupon_test(mlp: Mlp, admin: Any, spec: CouponSpec, *, key: str, promo
             raise CouponError(f"У правила {rule_id} чужие связи MarketingList {sorted(set(foreign))}; не удаляем.", code="CONFLICT")
         stage = "скрытое правило"
         hidden = spec.attributes(campaign_ref=campaign_ref, visible=False, active=False, today=today)
-        conflicts = [entity_id(i) for q in {spec.title, spec.external_id}
+        conflicts = [entity_id(i) for q in {spec.name, spec.external_id}
                      for i in mlp.paged(f"/mlp/ml/entity/{RULE}", FIND_COLUMNS[RULE], query=q)
-                     if entity_id(i) != rule_id and (str(attrs(i).get("Name") or "").strip().casefold() == spec.title.casefold()
+                     if entity_id(i) != rule_id and (str(attrs(i).get("Name") or "").strip().casefold() == spec.name.casefold()
                                                       or str(attrs(i).get("ExternalId") or "").strip().casefold() == spec.external_id.casefold())]
         if conflicts:
-            raise CouponError(f"Name/ExternalId «{spec.title}» уже у правила {sorted(set(conflicts))}; переименование — решение человека.", code="NAME_CONFLICT")
+            raise CouponError(f"Name/ExternalId «{spec.name}» уже у правила {sorted(set(conflicts))}; переименование — решение человека.", code="NAME_CONFLICT")
         if initially_active:
             mlp.set_active(rule_id, False)
         mlp.save(rule_id, hidden)

@@ -124,7 +124,10 @@ def drafts(tmp_path, *entries):
 
 def test_spec_from_promo_and_button_parsing():
     s = cs.spec_from_promo(promo())
-    assert s.title == "20% кешбэка на кофе" and s.external_id == "20% кешбэка на кофе" and not s.accept
+    assert s.title == "20% кешбэка на кофе" and s.external_id == "100001_20% кешбэка на кофе" and not s.accept
+    # Name = название купона как есть (его видит клиент), номер акции — только в ExternalId (Елена 21.10.2026)
+    assert s.name == "20% кешбэка на кофе" and "100001" not in s.name
+    assert cs.spec_from_promo(promo(number=None)).external_id == "20% кешбэка на кофе"
     assert (s.button_title, s.button_url) == ("В КАТАЛОГ", "dixyapp://app/products_list?id=777")
     assert cs.parse_button("") == ("В КАТАЛОГ", "dixyapp://app/catalog") and cs.parse_button("В каталог\n") == ("В КАТАЛОГ", "dixyapp://app/catalog")
     # значения колонки «Кнопка» с прода: ссылка с пробелами в имени, перенос строки, ссылка без текста
@@ -146,7 +149,7 @@ def test_spec_from_promo_and_button_parsing():
     assert cs.spec_from_promo(promo(activation="да")).accept
     assert not cs.spec_from_promo(promo(coupon_name="Активируй 50р. монетами", activation="нет")).accept
     assert not cs.spec_from_promo(promo(coupon_name="Активируй -13%", activation="промокод")).accept
-    assert cs.spec_from_promo(promo(coupon_name="x" * 47 + "yyy")).external_id == "x" * 47
+    assert cs.spec_from_promo(promo(coupon_name="x" * 47 + "yyy")).external_id == ("100001_" + "x" * 47)[:47]
     for bad in ({"coupon_name": ""}, {"coupon_name": "--"}, {"slip_text": ""}, {"coupon_name": "a" * 101}, {"end_date": None}):
         with pytest.raises(cs.CouponError) as e:
             cs.spec_from_promo(promo(**bad))
@@ -246,7 +249,7 @@ def test_full_test_display_flow_and_idempotent_rerun(tmp_path):
     r = cs.setup_coupon_test(M(api), admin, spec, key="100001_20261023", promo=100001, drafts=drafts(tmp_path), ledger=ledger, today=TODAY)
     assert r["status"] == "test_active" and r["rule_id"] == 101 and r["guid"] == GUID and r["button"] == "created" and r["campaign_id"] == 1025
     rule = api.entities[cs.RULE][101]["attributes"]
-    assert rule["Name"] == spec.title and rule["ExternalId"] == spec.external_id and rule["Description"] == spec.description
+    assert rule["Name"] == spec.name and rule["ExternalId"] == spec.external_id and rule["Description"] == spec.description
     assert rule["PrivateOfficeDisplayType"] == 3 and rule["IsActive"] is True and rule["CanDisplayInPrivateOffice"] is False
     assert rule["FilterByContactListsType"] == 4 and rule["FilterByChequesType"] == 3 and rule["CampaignId"]["id"] == 1025
     assert rule["DateFrom"].startswith("2026-10-20T00:00") and rule["DateTo"].startswith("2026-10-29T23:59")
@@ -272,7 +275,7 @@ def test_accept_coupon_gets_inclusion_list_and_display_flag(tmp_path):
     r = cs.setup_coupon_test(M(api), admin, spec, key="100001_20261023", promo=100001, drafts=drafts(tmp_path),
                              ledger=cs.CouponLedger(tmp_path / "c.sqlite3"), today=TODAY)
     inc = api.entities["MarketingList"][r["included_list_id"]]["attributes"]
-    assert inc["ExternalId"] == "Активируй 50р. монетами_in" and api.entities[cs.RULE][101]["attributes"]["CanDisplayInPrivateOffice"] is True
+    assert inc["ExternalId"] == "100001_Активируй 50р. монетами_in" and api.entities[cs.RULE][101]["attributes"]["CanDisplayInPrivateOffice"] is True
     assert api.links[(cs.RULE, 101, "MarketingList", "Include")] == {11, r["included_list_id"]}
     assert admin.calls[0][1:] == ("В КАТАЛОГ", "dixyapp://app/catalog")
 
