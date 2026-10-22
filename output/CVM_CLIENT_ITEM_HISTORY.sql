@@ -3,13 +3,16 @@
 -- категории в уже загруженных днях (в том числе последние 7 недель, если пересборку остановили) и догрузка истории.
 -- Заменяет секцию 2 CVM_CLIENT_ITEM_CATEGORIES.sql и ручные client_item_rebuild_keys / client_item_load 'init'.
 --
+-- ПОСЛЕ ПРАВКИ СПРАВОЧНИКА КАТЕГОРИЙ (dbo.I_CVM_PRODUCT_CATEGORY) ЗАПУСТИТЬ ЭТОТ ЖЕ СКРИПТ ВЕЧЕРОМ — он пересоберёт категории по всей
+-- истории витрины (решение Елены 20.10.2026), чеки не читаются.
+--
 -- ПЕРЕД ЗАПУСКОМ: остановить всё ручное по витрине и ЗАКРЫТЬ вкладки SSMS, где шли загрузка или пересборка (после «Стоп»
 -- вкладка держит замок витрины, пока открыта). Потом F5 этого файла целиком. Дальше ничего ловить не нужно: скрипт создаёт
 -- и запускает разовое задание SQL Agent «CVM_CLIENT_ITEM_HISTORY», оно работает само; после успешного окончания удаляет себя
 -- (при ошибке остаётся — причина в журнале). Новые дни грузит ночной шаг CLIENT_ITEM в «MCI Regular update».
 --
 -- ЧТО ДЕЛАЕТ ЗАДАНИЕ (dbo.client_item_history)
---   1. Проверяет, что процедура ключей дня — с нашими категориями (иначе стоп с сообщением).
+--   1. Проверяет, что процедура ключей дня — с нашими категориями и отметкой версии справочника (иначе стоп с сообщением).
 --   2. Ждёт: витрину никто не пишет (замок CVM_CLIENT_ITEM свободен) и 10 минут в журнале тишина; не идёт «MCI Regular update»;
 --      с 00:20 до 01:30 куски не начинаются. «MCI Reload every day» не ждётся: он пишет только сырые chequeitems_retro/rules,
 --      а витрина читает I_CHECK / I_CHECKHEADER, которые пишет «MCI Regular update» (19.10.2026 загрузка висит с 18.10 01:00 —
@@ -25,10 +28,18 @@
 --      догружает дни, которых нет (client_item_load 'init', категории ставятся сами). От новых дней к старым (сначала 52 недели —
 --      ДЦО и конструктор), кусками по 7 дней. Кусок, не взявший замок, — повтор через 5 минут (до 12 раз); другая ошибка
 --      куска пишется в журнал, задание идёт дальше и в конце завершается с ошибкой.
+--   6. Потом, в том же запуске, если время позволяет: дни, загруженные в витрине, у которых нет строки в CVM_CLIENT_ITEM_CAT_VER или версия
+--      справочника категорий в ней не равна текущей, — client_item_rebuild_keys порциями до 7 подряд идущих дней, от последних дней назад
+--      (I_CHECK не читается). Версия = CHECKSUM_AGG от первых 4 байт SHA2_256(ID_PRODUCT, ID_CVM_CATEGORY, HOW) по строкам справочника
+--      HOW > 0, как в client_item_keys_day. Порция не начинается (с полуночи до полудня), если уже 04:00 или позже либо до 04:00 остаётся
+--      меньше, чем заняли бы её дни по скорости прошлой порции (для первой порции — только проверка 04:00): остаток доберёт следующий вечерний запуск этого же скрипта. Ошибка порции — стоп (причина в журнале);
+--      при ошибке в п. 5 пересборка по версии справочника не начинается.
 --
 -- ПЕРЕЧЕНЬ ДЕЙСТВИЙ ПО ОБЪЕКТАМ
 --   dbo.client_item_history_wait   создаётся/заменяется: ожидание (п. 2).
 --   dbo.client_item_history        создаётся/заменяется: проверки, план кусков, выполнение (п. 1, 3–5).
+--   dbo.CVM_CLIENT_ITEM_CAT_VER    только чтение (NOLOCK) в п. 6; строки дней пишет client_item_keys_day из CVM_CLIENT_ITEM.sql.
+--   dbo.I_CVM_PRODUCT_CATEGORY     только чтение (NOLOCK): текущая версия справочника (п. 6).
 --   dbo.CVM_CLIENT_ITEM_LOG        UPDATE только записей STATUS = 'RUN' под замком витрины (п. 3); строки кусков пишут сами
 --                                  client_item_rebuild_keys и client_item_load.
 --   msdb: задание CVM_CLIENT_ITEM_HISTORY — если есть и не идёт, удаляется и создаётся заново (удаление после успеха), затем
@@ -82,12 +93,16 @@ BEGIN
     SET NOCOUNT ON;
     DECLARE @from date, @upto date, @alter_dt datetime, @lk int, @i int = 1, @imax int, @kind tinyint, @d1 date, @d2 date,
             @tries int = 0, @err int = 0, @msg nvarchar(2000);
+    DECLARE @ver int, @nst int, @nstale int, @j int = 1, @jmax int, @dur int = 0, @t0 datetime2(0), @now time, @done int = 0, @cut bit = 0,
+            @per_day int = 0;
 
     -- 2.1 процедура ключей — с нашими категориями
     IF NOT EXISTS (SELECT 1 FROM sys.sql_modules WHERE object_id = OBJECT_ID(N'dbo.client_item_keys_day')
-                   AND definition LIKE N'%I_CVM_PRODUCT_CATEGORY%')
+                   AND definition LIKE N'%I_CVM_PRODUCT_CATEGORY%' AND definition LIKE N'%CVM_CLIENT_ITEM_CAT_VER%'
+                   AND definition LIKE N'%SHA2_256%')     -- та же формула версии, что в п. 2.7 (иначе все дни «старые» при каждом запуске)
+       OR OBJECT_ID(N'dbo.CVM_CLIENT_ITEM_CAT_VER', N'U') IS NULL
     BEGIN
-        RAISERROR(N'client_item_history: dbo.client_item_keys_day без категорий — сначала выполнить CVM_CLIENT_ITEM.sql (версия с I_CVM_PRODUCT_CATEGORY).', 16, 1);
+        RAISERROR(N'client_item_history: dbo.client_item_keys_day без категорий или без отметки версии справочника — сначала выполнить CVM_CLIENT_ITEM.sql (версия с I_CVM_PRODUCT_CATEGORY и CVM_CLIENT_ITEM_CAT_VER).', 16, 1);
         RETURN;
     END
     SET @alter_dt = (SELECT modify_date FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.client_item_keys_day'));
@@ -201,6 +216,116 @@ BEGIN
                 SET @tries = 0;
             END
         END CATCH
+    END
+
+    -- 2.7 категории по версии справочника: загруженные дни без отметки или со старой версией — пересборка ключей (чеки не читаются)
+    IF @err > 0
+        RAISERROR(N'client_item_history: были ошибки кусков — пересборку по версии справочника категорий не начинаю.', 10, 1) WITH NOWAIT;
+    ELSE
+    BEGIN
+        -- текущая версия справочника — по тем же строкам и формуле, что в client_item_keys_day
+        SELECT @ver = ISNULL(CHECKSUM_AGG(CAST(SUBSTRING(HASHBYTES('SHA2_256', CAST(pc.ID_PRODUCT AS binary(8))
+                                    + CAST(pc.ID_CVM_CATEGORY AS binary(4)) + CAST(pc.[HOW] AS binary(1))), 1, 4) AS int)), 0)
+        FROM dbo.I_CVM_PRODUCT_CATEGORY AS pc WITH (NOLOCK)
+        WHERE pc.[HOW] > 0;
+
+        -- загруженные дни заново (п. 5 мог догрузить дни); RIGHT-секции: секция = номер границы + 1
+        DROP TABLE IF EXISTS #d2, #stale, #work2;
+        SELECT DATA = CAST(prv.value AS date)
+        INTO #d2
+        FROM sys.partition_range_values AS prv
+        JOIN sys.partition_functions AS pf ON pf.function_id = prv.function_id AND pf.name = N'pf_CLIENT_ITEM_DAY'
+        JOIN (SELECT partition_number, R = SUM(row_count)
+              FROM sys.dm_db_partition_stats
+              WHERE object_id = OBJECT_ID(N'dbo.I_CLIENT_ITEM_DAY') AND index_id IN (0, 1)
+              GROUP BY partition_number
+              HAVING SUM(row_count) > 0) AS s ON s.partition_number = prv.boundary_id + 1
+        WHERE CAST(prv.value AS date) BETWEEN @from AND @upto;
+
+        SELECT v0.DATA
+        INTO #stale
+        FROM #d2 AS v0
+        LEFT JOIN dbo.CVM_CLIENT_ITEM_CAT_VER AS v WITH (NOLOCK) ON v.DATA = v0.DATA
+        WHERE v.DATA IS NULL OR v.CAT_VER <> @ver;
+
+        SELECT @nst = COUNT(*) FROM #stale;
+
+        -- порции: подряд идущие дни, до 7, от последних дней назад
+        ;WITH g AS (
+            SELECT DATA, GRP = DATEDIFF(day, '20000101', DATA) - ROW_NUMBER() OVER (ORDER BY DATA)
+            FROM #stale
+        ), c AS (
+            SELECT DATA, GRP, CH = (ROW_NUMBER() OVER (PARTITION BY GRP ORDER BY DATA DESC) - 1) / 7
+            FROM g
+        )
+        SELECT D1 = MIN(DATA), D2 = MAX(DATA), N = COUNT(*),
+               ORD = ROW_NUMBER() OVER (ORDER BY MAX(DATA) DESC)
+        INTO #work2
+        FROM c
+        GROUP BY GRP, CH;
+
+        SELECT @jmax = COUNT(*) FROM #work2;
+        SET @tries = 0;
+        SET @msg = CONCAT(N'client_item_history: категории по версии справочника — дней со старой версией или без отметки: ', @nst,
+                          N', порций: ', @jmax, N'.');
+        RAISERROR(N'%s', 10, 1, @msg) WITH NOWAIT;
+
+        WHILE @j <= @jmax
+        BEGIN
+            EXEC dbo.client_item_history_wait @reload = 0;
+
+            SELECT @d1 = D1, @d2 = D2, @nstale = N FROM #work2 WHERE ORD = @j;
+
+            -- остановка до 04:00: с полуночи до полудня порция не начинается, если уже 04:00 или позже либо до 04:00 остаётся меньше,
+            -- чем заняли бы её дни по скорости прошлой порции (порции бывают от 1 до 7 дней)
+            SET @now = CAST(GETDATE() AS time);
+            IF @now < '12:00' AND (@now >= '04:00' OR DATEDIFF(second, @now, CAST('04:00' AS time)) < @per_day * @nstale)
+            BEGIN
+                SET @cut = 1;
+                BREAK;
+            END
+
+            SET @t0 = SYSDATETIME();
+            BEGIN TRY
+                EXEC dbo.client_item_rebuild_keys @date_from = @d1, @date_to = @d2;
+                SET @dur = DATEDIFF(second, @t0, SYSDATETIME());
+                SET @per_day = (@dur + @nstale - 1) / @nstale;     -- секунд на день, с округлением вверх
+                SET @done += @nstale;
+                SET @j += 1;
+                SET @tries = 0;
+                SET @msg = CONCAT(N'client_item_history: категории пересобраны ', CONVERT(char(10), @d1, 23), N' — ',
+                                  CONVERT(char(10), @d2, 23), N' (', @nstale, N' дн., ', @dur, N' с).');
+                RAISERROR(N'%s', 10, 1, @msg) WITH NOWAIT;
+            END TRY
+            BEGIN CATCH
+                IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                IF ERROR_NUMBER() = 50004 AND @tries < 12
+                BEGIN
+                    SET @tries += 1;           -- замок держит ночной шаг или ручной прогон — та же порция позже
+                    WAITFOR DELAY '00:05:00';
+                END
+                ELSE
+                BEGIN
+                    SET @err += 1;
+                    SET @msg = CONCAT(N'client_item_history: категории не пересобраны за ', CONVERT(char(10), @d1, 23), N' — ',
+                                      CONVERT(char(10), @d2, 23), N', стоп: ', LEFT(ERROR_MESSAGE(), 1500));
+                    RAISERROR(N'%s', 10, 1, @msg) WITH NOWAIT;
+                    BREAK;
+                END
+            END CATCH
+        END
+
+        IF @err = 0
+        BEGIN
+            SET @nst -= @done;
+            IF @nst > 0
+                SET @msg = CONCAT(N'client_item_history: осталось дней со старыми категориями: ', @nst,
+                                  CASE WHEN @cut = 1 THEN N' (время до 04:00 вышло)' ELSE N'' END,
+                                  N' — следующим вечером запустить этот же скрипт.');
+            ELSE
+                SET @msg = N'client_item_history: категории во всей загруженной истории соответствуют текущему справочнику.';
+            RAISERROR(N'%s', 10, 1, @msg) WITH NOWAIT;
+        END
     END
 
     IF @err > 0

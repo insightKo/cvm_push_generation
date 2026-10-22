@@ -1,0 +1,4626 @@
+[
+{
+"group": "Молочные продукты",
+"category": "Молоко",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр твёрдый и полутвёрдый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Яйца куриные",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Творог",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Масло сливочное",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сметана",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Йогурты ложковые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сырки глазированные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр плавленый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр творожный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Творожные десерты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Молочные снеки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сливки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Кефир",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр рассольный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Йогурты питьевые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр копчёный и чечил",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Функциональные напитки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Творожная масса",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр для гурманов",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Молочные коктейли",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Пудинги и желейные десерты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр твёрдый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Ряженка и простокваша",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Творог зернёный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр тёртый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Растительные напитки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сырная нарезка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Тан, айран, мацони",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сливки взбитые и порционные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Молоко детское",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сывороточные напитки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Яйца перепелиные",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Масло топлёное и ароматное",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Маргарин и спред",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Растительные десерты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Каши и запеканки молочные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Молочка детская",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Смеси молочные детские жидкие",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр с плесенью",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Чипсы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Майонез",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Семечки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Макароны",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Масло подсолнечное",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сахар белый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Лапша быстрого приготовления",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Рыбные консервы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сухарики",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Рис",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Соусы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Кетчуп",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сгущённое молоко",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Мука пшеничная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Горошек консервированный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Огурцы консервированные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Специи",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Овощные закуски консервированные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сухие завтраки и хлопья",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Хлебцы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Гречка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Злаковые и протеиновые батончики",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Томатная паста",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Кукуруза консервированная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Добавки для выпечки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Рыбные снеки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Масло растительное прочее",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Приправы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Оливки и маслины",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Овсяные хлопья",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Варенье и джем",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Крупы прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Смеси и маринады для блюд",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Тушёнка говяжья",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Грецкий орех",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Фасоль консервированная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Азиатские продукты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Соль",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Пюре быстрого приготовления",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Масло оливковое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Соевый соус",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Тушёнка свиная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Фисташки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Каши быстрого приготовления",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Семечки тыквы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Овощная консервация прочая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Томаты консервированные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Арахис",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Паштеты мясные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Здоровое питание",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Орехи весовые прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Фрукты и компоты консервированные",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сухофрукты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Горчица",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Супы быстрого приготовления",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Мюсли",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Бульоны",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Кукурузные палочки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Мёд",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Попкорн",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Грибы консервированные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Хлопья и каши прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Бобовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Миндаль весовой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Дрожжи",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Курага",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Уксус",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Орехи кешью",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Арахис весовой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Пшено",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Изюм",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Мясные консервы прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Ореховые смеси",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Фундук весовой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Лапша азиатская",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Чернослив",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Фисташки весовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Крахмал",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Ветчина консервированная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Мучные смеси",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сухофрукты весовые прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Рис и клёцки быстрого приготовления",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Кисели и концентраты напитков",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сиропы",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сахарозаменители",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Миндаль",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Мука прочая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Хрен",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Аджика",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сахар коричневый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Снеки прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Витамины и БАД",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Бакалея",
+"category": "Смеси сухофруктов",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Орехи в скорлупе",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Фундук",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Каши с мясом консервированные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Ягоды сушёные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Орехи прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сухофрукты прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Батончики-мюсли",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Грибы сушёные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Диетические сладости",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Красители пищевые",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Бакалея",
+"category": "Орехи кедровые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Сухое молоко и сливки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Финики",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бакалея",
+"category": "Цукаты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Пиво светлое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Водка",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Коньяк",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вино красное",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вино белое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Виски",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Игристые вина российские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Настойки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Пиво нефильтрованное",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Пиво тёмное и крепкое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Пиво ароматизированное",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Пиво безалкогольное",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Пивные напитки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вино в тетрапаке",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Пиво крафтовое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вино розовое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Сидр винный",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Просекко",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Бренди",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Джин",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Сидр",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Аперитивы и диджестивы",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Ром",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вермут",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Игристые вина импортные прочие",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Ликёры",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вина креплёные и десертные",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Асти",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Алкогольные коктейли",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Бальзамы и биттеры",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вино безалкогольное",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Кава",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Текила",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Вино плодовое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Винные напитки газированные",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Крепкий алкоголь прочий",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Ламбруско",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Алкоголь",
+"category": "Шампанское",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Курица разделка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Сосиски",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Колбаса варёная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Колбаса сырокопчёная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Курица тушка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Колбаса копчёная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Индейка и прочая птица",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Деликатесы варёно-копчёные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Свинина",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Фарш мясной",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Ветчина",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Деликатесы из птицы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Котлеты и наггетсы из птицы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Деликатесы сырокопчёные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Шашлык и мясо в маринаде",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Птица в маринаде",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Фарш из птицы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Колбаски и купаты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Холодец и зельц",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Котлеты и люля из мяса",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Субпродукты птицы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Сардельки и шпикачки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Паштеты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Сало и шпик",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Мясные снеки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Говядина и телятина",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Колбаса ливерная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Субпродукты мясные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Колбаски и купаты из птицы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Утка и гусь тушки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Баранина",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Колбаски для жарки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Котлеты и изделия из птицы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Котлеты и полуфабрикаты из фарша",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Котлеты и фарш мясные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Кролик и прочее мясо",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Кролик и прочее мясо охлаждённое",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Курица охлаждённая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Мясо в маринаде",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Мясо в панировке",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Полуфабрикаты из птицы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Полуфабрикаты мясные замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Птица замороженная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Фарш",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Томаты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Бананы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Виноград",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Картофель",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Огурцы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Слива",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Яблоки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Мандарины",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Перец сладкий",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Арбуз",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Зелень свежая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Лук репчатый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Салаты листовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Соленья и квашения",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Шампиньоны",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Лимоны",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Дыня",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Персики и нектарины",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Ананас",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Авокадо",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Апельсины",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Груши",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Морковь",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Капуста белокочанная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Хурма",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Кабачки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Инжир свежий",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Киви",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Баклажаны",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Овощи варёные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Салаты корейские",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Грейпфрут, помело, свити",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Чеснок",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Зелень в горшочках",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Тыква",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Манго",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Капуста пекинская",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Свёкла",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Капуста цветная и брокколи",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Имбирь",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Батат",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Гранат",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Петрушка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Редис",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Вешенки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Проростки и микрозелень",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Лайм",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Кукуруза свежая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Абрикосы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Айва",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Голубика и черника",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Горох и фасоль свежие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Грибы прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Ежевика",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Клубника и земляника",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Клюква и брусника",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Кокос",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Крыжовник",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Малина",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Овощные наборы",
+"unit": "кг",
+"no_scale": true
+},
+{
+"group": "Овощи и фрукты",
+"category": "Редька и репа",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Сельдерей",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Спаржа",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Фрукты прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Черешня и вишня",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Овощи и фрукты",
+"category": "Экзотические фрукты прочие",
+"unit": "кг",
+"no_scale": true
+},
+{
+"group": "Овощи и фрукты",
+"category": "Ягоды прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Печенье",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Конфеты весовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Шоколад",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Конфеты в коробках",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Шоколадные батончики",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Торты и пироги",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Конфеты и мармелад",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Вафли",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Пирожные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Конфеты фасованные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Торты и пирожные длительного хранения",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Кексы и рулеты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Круассаны",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Зефир",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Сушки, сухари, соломка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Жевательная резинка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Пряники",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Фигурный шоколад и шоколадные яйца",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Восточные сладости",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Пастила и суфле",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Мармелад жевательный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Крекеры и галеты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Мармелад",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Карамель, леденцы и ирис весовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Сладкие пасты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Драже",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Сладости прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Карамель и леденцы фасованные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Пирожные и бисквиты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Ирис и жевательные конфеты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Новогодние сладкие подарки",
+"unit": "кг",
+"no_scale": true
+},
+{
+"group": "Кондитерские изделия",
+"category": "Вафельные трубочки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Зефир и пастила",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Коржи и тарталетки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Леденцы и драже",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Кондитерские изделия",
+"category": "Фигурный шоколад",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Кондитерские изделия",
+"category": "Шоколадные яйца",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Табак",
+"category": "Сигареты",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Табак",
+"category": "Табачные стики",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Табак",
+"category": "Зажигалки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Табак",
+"category": "Табачные аксессуары",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Табак",
+"category": "Сигары, сигариллы и табак",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Табак",
+"category": "Электронные сигареты: картриджи",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Табак",
+"category": "Электронные сигареты: устройства",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Напитки",
+"category": "Энергетики",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Газированные напитки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Соки и нектары",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Вода негазированная",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Лимонады и газировка",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Холодный чай",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Вода со вкусом",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Кола",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Квас",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Сокосодержащие напитки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Тоники",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Кисели готовые",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Морсы и компоты",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Спортивные напитки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Холодный кофе",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Смузи",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Вода газированная",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Изотоники",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Лимонады и фруктовая газировка",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Напитки",
+"category": "Напитки негазированные",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Батоны и багеты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Слойки и булочки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Хлеб чёрный и серый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Хлеб с добавками",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Лаваш и лепёшки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Сдоба",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Выпечка сытная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Выпечка сладкая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Хлеб белый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Пицца и пироги",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Хлеб ржано-пшеничный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Кексы и маффины",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Булочки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Лаваш и чиабатта",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Хлеб цельнозерновой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Куличи",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Печенье весовое",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Сухари и гренки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Тесто",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Хлеб ржаной",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Пельмени",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Мороженое порционное",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Снэки замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Мороженое семейное",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Котлеты и наггетсы замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Блины и сырники замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Овощи замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Готовые блюда замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Картофель фри замороженный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Тесто замороженное",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Пицца и пироги замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Вареники",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Ягоды и фрукты замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Торты-мороженое и рулеты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Лёд пищевой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Грибы замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Выпечка замороженная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Овощи и ягоды замороженные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Пельмени и манты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Заморозка",
+"category": "Полуфабрикаты замороженные прочие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Пресервы рыбные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Крабовые палочки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба солёная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба белая филе и стейки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Креветки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыбные полуфабрикаты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба холодного копчения",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Икра прочая и имитированная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба белая тушка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Пресервы из морепродуктов",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Паштеты и пасты рыбные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба красная филе и стейки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Закуски рыбные",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Икра красная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Салаты из морской капусты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Кальмары и морепродукты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Икра чёрная осетровая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Морепродукты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Морепродукты живые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба вяленая",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба горячего копчения",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба живая и охлаждённая целиком",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба замороженная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба копчёная",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба красная тушка",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба солёная и пресервы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Кофе растворимый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Чай чёрный пакетированный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Кофе молотый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Кофе в зёрнах",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Кофе порционный 3в1",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Чай чёрный листовой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Чай зелёный пакетированный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Кофейные напитки и цикорий",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Какао и горячий шоколад",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Чай фруктовый и травяной пакетированный",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Кофе в капсулах",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Чай зелёный листовой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Чайные наборы",
+"unit": "кг",
+"no_scale": true
+},
+{
+"group": "Чай, кофе, какао",
+"category": "Чай фруктовый и травяной листовой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Влажный корм для кошек",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Сухой корм для кошек",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Влажный корм для собак",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Сухой корм для собак",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Лакомства для кошек",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Наполнители для кошачьих туалетов",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Лакомства для собак",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Аксессуары для животных",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Зоотовары",
+"category": "Гигиена питомцев",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Зоотовары",
+"category": "Корм для птиц, грызунов и рыб",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Зоотовары",
+"category": "Шампуни для животных",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Туалетная бумага",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Зубная паста",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Шампуни",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Прокладки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Бумажные полотенца",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Влажные салфетки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Гели для душа",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Салфетки бумажные",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Дезодоранты женские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Мыло туалетное",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Прокладки ежедневные",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Станки и кассеты для бритья",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Ватные палочки и диски",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Прокладки урологические",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Зубные щётки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Укладка волос",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Бальзамы для волос",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Дезодоранты мужские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Мыло жидкое",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Влажная туалетная бумага",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Краска для волос",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Тампоны",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Уход за лицом",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Ополаскиватели для рта",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Средства для бритья",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Носовые платки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Кремы для рук",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Соли для ванн",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Маски для волос",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Презервативы",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Средства после бритья",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Аксессуары для волос",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Тесты медицинские",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Зубочистки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Уход за телом",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Пластыри",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Макияж для губ",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Подарочные наборы косметики",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Красота и здоровье",
+"category": "БАДы и аптечные средства",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Бинты и вата",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Губки и мочалки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Депиляция",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Духи женские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Духи мужские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Зубная нить",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Интимная гигиена",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Интимные гели",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Кремы для ног",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Лечебные кремы и бальзамы",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Макияж для глаз",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Макияж для лица",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Маникюр и педикюр",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Маникюрные принадлежности",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Маски и медрасходники",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Наборы декоративной косметики",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Пены для ванн",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Подгузники для взрослых",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Расчёски и щётки для волос",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Спонжи и аксессуары для макияжа",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Спонжи, зеркала, платки",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Спортивное питание",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Средства для загара",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Средства для ногтей",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Уход за больными",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Красота и здоровье",
+"category": "Электрические зубные щётки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Вторые блюда",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Салаты готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Суши и роллы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Сэндвичи и бургеры",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Сэндвичи и роллы",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Кофе и горячие напитки с собой",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Супы готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Вторые блюда готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Завтраки готовые (каши, омлеты)",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Блины и сырники",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Десерты готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Закуски готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Морсы и лимонады свежие",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Пирожки и слойки готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Гарниры и овощные блюда",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Каши готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Копчёности и мясное ассорти",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Курица гриль",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Мягкое мороженое",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Пирожные и десерты",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Полуфабрикаты кулинарии",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Рыбные блюда готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Соки и смузи с собой",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Соленья",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Соленья и соусы готовые",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Фреши и смузи",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Холодец",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Чебуреки и пирожки",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Готовая еда",
+"category": "Яйца варёные",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Соки и морсы детские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Пюре фруктовое детское",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Творожки детские",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Йогурт детский питьевой",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Пюре мясное детское",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Вода детская",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Снеки детские",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Каши детские жидкие",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Детские влажные салфетки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Кефир и биолакт детские",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Подгузники-трусики",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Детские кремы и уход за кожей",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Коктейли молочные детские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Игрушки прочие",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Мягкие игрушки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Йогурт детский ложковый",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Печенье детское",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Молочные смеси детские",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Каши детские сухие",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Пелёнки одноразовые",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Наборы для творчества",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Детские зубные пасты и щётки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Машинки и транспортные игрушки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Подгузники",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Конструкторы",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Игровые наборы",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Игрушки для улицы",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Носки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Роботы и трансформеры",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Мыльные пузыри",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Пюре овощное детское",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Игрушечное оружие",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Чай детский",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Куклы и аксессуары",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Каши и смеси готовые детские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Настольные и обучающие игры",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Шапки, перчатки, заколки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Брюки и шорты детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Бутылочки и поильники",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Верхняя одежда детская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Десерты и коктейли детские",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Детская ватная продукция",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Детская декоративная косметика",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Детские шампуни и купание",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Джемперы и толстовки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Игрушки для малышей",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Кеды и кроссовки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Колготки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Куклы",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Машинки и транспорт",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Музыкальные игрушки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Нижнее бельё детское",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Обувь детская зимняя",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Обувь детская резиновая",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Одежда детская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Одежда детская прочая",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Одежда для новорождённых",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Палатки и качели детские",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Пижамы детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Прокладки для груди",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Развивающие игрушки и игры",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Резиновые сапоги детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Рубашки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Сандалии и туфли детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Соски и пустышки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Спортивная одежда детская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Тапочки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Текстиль для малышей",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Уход для мам",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Детские товары",
+"category": "Уход и безопасность малыша",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Футболки детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Шлёпанцы и пляжная обувь детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Шлёпанцы и сандалии детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Детские товары",
+"category": "Юбки и платья детские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Бытовая химия",
+"category": "Гели для стирки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для посуды",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Стиральный порошок",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Кондиционеры для белья",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для сантехники",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Универсальные чистящие средства",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Освежители воздуха",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Для посудомоечных машин",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Отбеливатели и пятновыводители",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Капсулы для стирки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства от засоров",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для кухни",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для полов",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Мыло хозяйственное",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для стёкол",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Защита стиральных машин",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Уход за обувью",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства от насекомых и грызунов",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для деликатной стирки",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Антистатики",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для ковров",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Полироли для мебели",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства для глажения",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства от моли",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Средства от накипи",
+"unit": "кг",
+"no_scale": false
+},
+{
+"group": "Бытовая химия",
+"category": "Уход за обувью и одеждой",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Товары для дома",
+"category": "Пакеты и сумки для покупок",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Уборка и хозинвентарь",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Пакеты, фольга и плёнка для продуктов",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Товары для праздника и подарков",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Пикник и барбекю",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Пресса, книги и открытки",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Одноразовая посуда",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Цветы и комнатные растения",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Свет, батарейки и электрика",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Хранение продуктов и консервирование",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Кухонная посуда и утварь",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Мелкая бытовая техника",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Грунт и удобрения",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Инструменты и ремонт",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Сад и огород",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Текстиль для дома",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Сушка, глажка и мелочи для одежды и обуви",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Канцелярия и творчество",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Автоаксессуары",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Автохимия, масла и омыватели",
+"unit": "л",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Галантерея",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Посуда столовая и сервировка",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Новогодние товары",
+"unit": "шт",
+"no_scale": false
+},
+{
+"group": "Товары для дома",
+"category": "Ванная, туалет и баня",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Товары для дома",
+"category": "Декор для дома",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Товары для дома",
+"category": "Крупная бытовая техника",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Товары для дома",
+"category": "Спорт, туризм и отдых",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Товары для дома",
+"category": "Хранение вещей и мебель",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Товары для дома",
+"category": "Электроника, связь и аксессуары",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Одежда женская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Одежда мужская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Тапочки домашние женские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Тапочки домашние мужские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Сланцы и шлёпанцы женские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Резиновая обувь женская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Сланцы и шлёпанцы мужские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Резиновая обувь мужская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Бижутерия и аксессуары",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Зимняя обувь женская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Зимняя обувь мужская",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Кеды и кроссовки женские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Кеды и кроссовки мужские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Одежда унисекс",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Туфли и сандалии женские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Одежда и обувь",
+"category": "Туфли и сандалии мужские",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Акции лояльности",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Вторсырьё",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Замороженное мясо оптовое",
+"unit": "кг",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Лотерейные билеты",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Лотерея",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Несопоставленные",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Препаки и дисплеи",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Рекламные материалы",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Служебные ТМЦ и упаковка",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Сырьё для производства",
+"unit": "кг",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Тестовые коды",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Униформа",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Служебное",
+"category": "Доставка и сервис",
+"unit": "шт",
+"no_scale": true
+},
+{
+"group": "Бакалея",
+"category": "Панировка",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Желе и десерты сухие",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Кондитерский декор",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Разрыхлитель, ванилин, желатин",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Нори и морская капуста",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Кокосовое молоко",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Компотные смеси",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Молочные продукты",
+"category": "Тофу",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Молочные продукты",
+"category": "Сыр мягкий (козий, свежий)",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Молочные продукты",
+"category": "Сырные тарелки и наборы",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Детские товары",
+"category": "Мыло детское",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Детские товары",
+"category": "Детские зубные щётки",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Детские товары",
+"category": "Детские зубные пасты",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Детские товары",
+"category": "Резиновая обувь детская",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Детские товары",
+"category": "Сланцы и шлёпанцы детские",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Детские товары",
+"category": "Туфли и сандалии детские",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба красная солёная",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Голубцы и фаршированный перец",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Заморозка",
+"category": "Котлеты овощные и растительные",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба красная холодного копчения",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Рыба красная горячего копчения",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Паштеты и закуски рыбные",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Мясо, птица, колбасы",
+"category": "Котлеты и полуфабрикаты мясные",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Рыба и морепродукты",
+"category": "Устрицы",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Блоки и диски для унитаза",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Чистящие порошки",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Бритвы одноразовые",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Лезвия для Т-образных бритв",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Станки и кассеты",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Ватные палочки",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Ватные диски",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Соль для посудомоечных машин",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Ополаскиватели и очистители для посудомоечных машин",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Таблетки и капсулы для посудомоечных машин",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Гели для посудомоечных машин",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Отбеливатели и пятновыводители сухие",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бытовая химия",
+"category": "Отбеливатели и пятновыводители жидкие",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Патчи для глаз",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Тканевые маски для лица",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Табак",
+"category": "Никотиновые пэки",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Табак",
+"category": "Спички",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Бомбочки для ванн",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Жидкость для снятия лака",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Насадки для электрических щёток",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Кисти и спонжи для макияжа",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Красота и здоровье",
+"category": "Зеркала и мелочи для макияжа",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Напитки",
+"category": "Лимонады",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Хлеб и выпечка",
+"category": "Сдоба и булочки",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Алкоголь",
+"category": "Винные напитки",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Алкоголь",
+"category": "Вино игристое",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Кондитерские изделия",
+"category": "Сладости с игрушкой",
+"unit": "шт",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Кондитерские изделия",
+"category": "Рулеты и бисквиты",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Готовая еда",
+"category": "Соки и смузи свежие",
+"unit": "л",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Молочные продукты",
+"category": "Яичные продукты",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Отруби и клетчатка",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Семена и зёрна для проращивания",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Ореховые пасты и урбеч",
+"unit": "кг",
+"no_scale": false,
+"new": true
+},
+{
+"group": "Бакалея",
+"category": "Растительное мясо и соевые продукты",
+"unit": "кг",
+"no_scale": false,
+"new": true
+}
+]
