@@ -1,0 +1,44 @@
+[Unit]
+Description=Выгрузка списков CRM_GUID согласованных акций в /srv/cvm_lists для Manzana Campaign
+Documentation=file:///srv/cvm_portal/campaign-lists/README.md
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# elena — в группе docker и владелец lists.env; сам процесс в контейнере идёт под uid 10010 (cvm-lists),
+# без прав, только на чтение файловой системы, кроме /data, /state и /portal-outbox — папки, куда API портала кладёт
+# списки из «Срезов базы» (решение Елены 10.10.2026; группа 10010 и setgid — install.sh, другие данные API не видны). Подключение к MCI — учётка cvm_api из api.env
+# (решение Елены 08.10.2026: отдельную учётку админы MCI заводят долго, пока без неё); база портала — lists.env.
+# /coupon-images — каталог картинок купонов портала (пишет шлюз портала от elena, 755/644), только чтение: выбранная
+# картинка копируется в /data/coupons (решение Елены 21.10.2026 «складывай на SFTP»).
+User=elena
+Group=elena
+# Контейнер, оставшийся от прогона, убитого по таймауту, иначе занял бы имя и следующий прогон не стартовал.
+ExecStartPre=-/usr/bin/docker rm -f cvm-campaign-lists
+# --init: tini первым процессом передаёт SIGTERM в python (без него сигнал PID 1 отбрасывается ядром).
+# Письмо «Готовы списки к загрузке в Campaign» после выгрузки (решение Елены 22.10.2026): от cvm@mci-team.pro Панову,
+# SMTP хостинга reg.ru; пароль ящика — NOTIFY_SMTP_PASS в lists.env (без него письмо выключено, выгрузка идёт как раньше).
+ExecStart=/usr/bin/docker run --rm --init --name cvm-campaign-lists \
+  --network app_default \
+  --env-file /srv/cvm_portal/api.env \
+  --env-file /srv/cvm_portal/lists.env \
+  -v /srv/cvm_lists/lists:/data \
+  -v /srv/cvm_portal/lists-state:/state \
+  -v /srv/cvm_portal/api-data/campaign_outbox:/portal-outbox \
+  -e LISTS_PORTAL_OUTBOX=/portal-outbox \
+  -e NOTIFY_TO=M.Panov@dixy.ru \
+  -e NOTIFY_FROM=cvm@mci-team.pro \
+  -v /srv/cvm_portal/coupon_images:/coupon-images:ro \
+  -e COUPON_IMAGES_DIR=/coupon-images \
+  --read-only --tmpfs /tmp:size=16m \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --memory 512m --pids-limit 64 \
+  cvm-campaign-lists:latest
+TimeoutStartSec=14min
+ExecStop=-/usr/bin/docker stop -t 20 cvm-campaign-lists
+TimeoutStopSec=30
+# По таймауту systemd останавливает и сам контейнер, а не только клиент docker.
+ExecStopPost=-/usr/bin/docker rm -f cvm-campaign-lists
+Nice=10
