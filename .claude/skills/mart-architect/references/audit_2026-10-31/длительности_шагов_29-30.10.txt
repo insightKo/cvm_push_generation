@@ -1,0 +1,59 @@
+== run_date 20261029 steps 42
+   0 (Job outcome)                start 052015 dur 13:25:50 status 1
+  17 Communication processing     start 091202 dur 0:05:23 status 1
+  21 CVM_CONTACT                  start 091913 dur 1:47:01 status 1
+  22 CLIENT_ITEM                  start 110614 dur 1:23:21 status 1
+  23 PRODUCT_SCORE_REGION         start 122935 dur 0:05:51 status 1
+  24 GCG_REPORT                   start 123526 dur 0:02:06 status 1
+  26 CVM_CONTACT_DATA_W           start 123739 dur 0:18:20 status 1
+  28 Shop time                    start 125713 dur 0:02:07 status 1
+  29 for_i_segment                start 125920 dur 0:03:38 status 1
+  30 I_ASSORT_WEEK                start 130258 dur 0:21:09 status 1
+  32 I_cont_assort_w              start 132520 dur 0:02:43 status 1
+  35 I_CONTACT_PRICE_SEGMENT      start 132828 dur 0:19:06 status 1
+  37 CLUSTERS                     start 134734 dur 1:51:35 status 1
+  38 CLUSTER_SCORE                start 153909 dur 0:17:05 status 1
+  40 PP_EFFECT_MONTH              start 155632 dur 0:04:07 status 1
+  46 DELIVERY_REPORT              start 160314 dur 0:11:49 status 1
+  48 DISCOUNT_MART                start 161503 dur 0:08:38 status 1
+  49 DISC_MODEL_MART              start 162341 dur 0:45:30 status 1
+  50 DISC_EFFECT                  start 170911 dur 0:07:43 status 1
+  51 BONUS_MART                   start 171654 dur 0:04:22 status 1
+  52 CVM_EFFECT_TODAY             start 172116 dur 0:43:10 status 1
+  53 cohort_new                   start 180426 dur 0:05:16 status 1
+  54 I_TRENDS                     start 180942 dur 0:36:12 status 1
+== run_date 20261030 steps 58
+   0 (Job outcome)                start 053215 dur 13:04:48 status 1
+   1 CLEAR DATA                   start 053215 dur 0:32:48 status 1
+   4 Check Product Update         start 060548 dur 1:07:59 status 1
+   8 Check rules processing       start 071352 dur 0:03:14 status 1
+   9 Checks and checkheaders proc start 071706 dur 0:22:15 status 1
+  10 I_CHECK_DELTA_EA             start 073921 dur 0:04:34 status 1
+  11 Cards Processing             start 074355 dur 0:16:05 status 1
+  12 Price processing             start 080000 dur 0:18:23 status 1
+  13 INSERT I_CHECK_DELTA         start 081823 dur 0:57:02 status 1
+  15 Contacts processing          start 091525 dur 0:05:38 status 1
+  17 Communication processing     start 092237 dur 0:05:11 status 1
+  18 fav_cat_prod_load            start 092748 dur 0:02:18 status 1
+  21 CVM_CONTACT                  start 093037 dur 1:50:20 status 1
+  22 CLIENT_ITEM                  start 112057 dur 1:26:15 status 1
+  23 PRODUCT_SCORE_REGION         start 124712 dur 0:05:37 status 1
+  26 CVM_CONTACT_DATA_W           start 125443 dur 0:19:20 status 1
+  28 Shop time                    start 131535 dur 0:02:13 status 1
+  29 for_i_segment                start 131748 dur 0:03:13 status 1
+  30 I_ASSORT_WEEK                start 132101 dur 0:20:31 status 1
+  32 I_cont_assort_w              start 134245 dur 0:02:43 status 1
+  35 I_CONTACT_PRICE_SEGMENT      start 134549 dur 0:20:13 status 1
+  37 CLUSTERS                     start 140602 dur 1:48:38 status 1
+  38 CLUSTER_SCORE                start 155440 dur 0:17:14 status 1
+  40 PP_EFFECT_MONTH              start 161210 dur 0:03:14 status 1
+  46 DELIVERY_REPORT              start 161737 dur 0:12:00 status 1
+  48 DISCOUNT_MART                start 162937 dur 0:08:24 status 1
+  49 DISC_MODEL_MART              start 163801 dur 0:46:09 status 1
+  50 DISC_EFFECT                  start 172410 dur 0:04:25 status 1
+  51 BONUS_MART                   start 172835 dur 0:04:30 status 1
+  52 CVM_EFFECT_TODAY             start 173305 dur 0:27:20 status 1
+  54 I_TRENDS                     start 180025 dur 0:36:27 status 1
+20261031 10000 1 check for exists another  0 1 Executed as user: NT SERVICE\SQLSERVERAGENT. The step succeeded.
+20261030 10000 0 (Job outcome) 43215 1 The job succeeded.  The Job was invoked by Schedule 13 (Every night).  The last 
+20261030 53215 3 start regular job 0 1 Executed as user: NT SERVICE\SQLSERVERAGENT. Job 'MCI Regular update' started su

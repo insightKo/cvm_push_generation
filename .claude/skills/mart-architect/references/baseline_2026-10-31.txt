@@ -1,0 +1,79 @@
+БАЗОВАЯ ЛЕНТА «MCI Regular update» — снято 31.10.2026 чтением через cvm-api на ru (sp_help_jobstep, sp_help_jobhistory)
+
+Цепочка 30.10.2026: «MCI Reload every day» 01:00–05:32 (загрузка из CDP, 4:32; шаг 3 запускает Regular update) →
+Regular update 05:32:15–18:37:03 (13:04:48). 29.10: 05:20–18:46 (13:25:50). Reload 21–30.10 — от 2:36 до 4:32 (растёт).
+Шаги 1–17 (интеграция MCI) 05:32–09:27 = 3:55; шаги 18–56 (витрины) 09:27–18:37 = 9:09, строго подряд.
+Порядок: каждый шаг при успехе → следующий; «ош. →58» — при ошибке письмо об ошибке и выход; «ош. дальше» — следующий шаг.
+Шаг 52 CVM_EFFECT_TODAY с @stop_at='18:00': после 18:00 новые порции акций не начинаются. 30.10 выбрано 60 акций,
+пересчитано 46 (I_CVM_EFFECT, «Дата расчета» 17:44–18:00:25) — 14 остались без пересчёта.
+
+Сервер: SQL Server 2019 Standard CU15 (15.0.4198.2); MAXDOP 4; cost threshold 150; max server memory 192 512 МБ;
+tempdb 12 файлов данных (1,45 ТБ) + 2 журнала; mci_model — SIMPLE, совместимость 150, RCSI выкл., snapshot isolation вкл.
+Учётка cvm-api: VIEW DEFINITION есть; VIEW SERVER STATE и VIEW DATABASE STATE нет (DMV недоступны).
+
+Крупнейшие таблицы (строк / ГБ / хранение; ни одна не секционирована):
+I_CHECK 11,56 млрд / 633 / CCI · I_ASSORT_WEEK 2,21 млрд / 136 / CCI · I_CHECK_MISSION 5,24 млрд / 106 / CCI ·
+I_CVM_CONTACT_DATA_W 137 млн / 83 / КУЧА · I_CHECKHEADER 1,77 млрд / 78 / CCI · I_ASSORT_MONTH 788 млн / 58 / CCI ·
+I_CONT_ASSORT_W 642 млн / 55 / CCI · I_FOR_MODEL_CHURN_NEW 100 млн / 44 / КУЧА · I_CH_INDEXES 1,77 млрд / 32 / CCI ·
+I_PROMO_DELIVERY_REPORT 5,35 млрд / 32 / CCI · I_CHECK_RULE 1,81 млрд / 27 / CCI · I_DISC_MODEL_CLIENT_DISC 2,12 млрд / 19 / CCI ·
+I_PROMO_OFFER 1,59 млрд / 15 / CCI · I_CVM_CONTACT 15 млн / 7,6 / КУЧА · I_CONTACT_PRICE_SEGMENT 15 млн / 2,5 / КУЧА.
+
+Шаги (номер | имя | команда | при ошибке | 30.10 старт ЧЧММСС, длительность | 29.10 длительность; «-» — нет в истории):
+ 1 | CLEAR DATA                   | exec dbo.clear_data_update                                             | ош. →58    | 30.10 053215  0:32:48 | 29.10        -
+ 2 | Shop processing              | exec [dbo].[shop_processing]                                           | ош. →58    | 30.10 060503  0:00:00 | 29.10        -
+ 3 | Products processing          | exec [dbo].[products_processing]                                       | ош. →58    | 30.10 060503  0:00:45 | 29.10        -
+ 4 | Check Product Update         | exec dbo.check_product_update                                          | ош. →58    | 30.10 060548  1:07:59 | 29.10        -
+ 5 | CVM_CATEGORY                 | exec dbo.cvm_category_refresh                                          | ош. дальше | 30.10 071347  0:00:03 | 29.10        -
+ 6 | Campaignes processing        | exec [dbo].[campaignes_processing]                                     | ош. →58    | 30.10 071351  0:00:01 | 29.10        -
+ 7 | Rules processing             | exec [dbo].[rules_processing]                                          | ош. →58    | 30.10 071352  0:00:00 | 29.10        -
+ 8 | Check rules processing       | exec [dbo].[check_rules_processing]                                    | ош. →58    | 30.10 071352  0:03:14 | 29.10        -
+ 9 | Checks and checkheaders proc | exec [dbo].[check_checkheader_processing]                              | ош. →58    | 30.10 071706  0:22:15 | 29.10        -
+10 | I_CHECK_DELTA_EA             | exec dbo.check_checkheader_processing_ea                               | ош. →58    | 30.10 073921  0:04:34 | 29.10        -
+11 | Cards Processing             | exec [dbo].[card_processing_new]                                       | ош. →58    | 30.10 074355  0:16:05 | 29.10        -
+12 | Price processing             | exec [dbo].[price_processing]                                          | ош. →58    | 30.10 080000  0:18:23 | 29.10        -
+13 | INSERT I_CHECK_DELTA         | exec [dbo].[check_insert]                                              | ош. →58    | 30.10 081823  0:57:02 | 29.10        -
+14 | CHECKING_DATA                | [dbo].[check_data]                                                     | ош. →58    | 30.10 091525  0:00:00 | 29.10        -
+15 | Contacts processing          | exec [dbo].[contacts_processing]                                       | ош. →58    | 30.10 091525  0:05:38 | 29.10        -
+16 | MISTAKE_CONTACT              | exec [dbo].[MISTAKE_CONTACT]                                           | ош. →58    | 30.10 092103  0:01:34 | 29.10        -
+17 | Communication processing     | exec [dbo].[communication_processing]                                  | ош. →58    | 30.10 092237  0:05:11 | 29.10  0:05:23
+18 | fav_cat_prod_load            | declare @date_start datetime=convert(date,getdate()-5) declare #cur... | ош. дальше | 30.10 092748  0:02:18 | 29.10  0:01:17
+19 | fav_cat_prod_ins             | exec [dbo].[fav_cat_prod_ins]                                          | ош. дальше | 30.10 093006  0:00:31 | 29.10  0:00:31
+20 | UPDATE_TYPE_PROMO            | exec [dbo].[update_type_promo]                                         | ош. →58    | 30.10 093037  0:00:00 | 29.10  0:00:00
+21 | CVM_CONTACT                  | exec [dbo].[CVM_CONTACT]                                               | ош. →58    | 30.10 093037  1:50:20 | 29.10  1:47:01
+22 | CLIENT_ITEM                  | exec dbo.client_item_night;                                            | ош. дальше | 30.10 112057  1:26:15 | 29.10  1:23:21
+23 | PRODUCT_SCORE_REGION         | exec dbo.product_score_region;                                         | ош. дальше | 30.10 124712  0:05:37 | 29.10  0:05:51
+24 | GCG_REPORT                   | exec dbo.gcg_report;                                                   | ош. дальше | 30.10 125249  0:01:48 | 29.10  0:02:06
+25 | CVM_CONTACT_DATA             | exec [dbo].[CVM_CONTACT_DATA]                                          | ош. →58    | 30.10 125437  0:00:06 | 29.10  0:00:07
+26 | CVM_CONTACT_DATA_W           | exec [dbo].[CVM_CONTACT_DATA_W]                                        | ош. →58    | 30.10 125443  0:19:20 | 29.10  0:18:20
+27 | AFFINITIVE_MODEL             | exec [dbo].[AFFINITIVE_MODEL]                                          | ош. →58    | 30.10 131403  0:01:32 | 29.10  0:01:14
+28 | Shop time                    | exec dbo.shop_time                                                     | ош. →58    | 30.10 131535  0:02:13 | 29.10  0:02:07
+29 | for_i_segment                | exec [dbo].[for_i_segment]                                             | ош. →58    | 30.10 131748  0:03:13 | 29.10  0:03:38
+30 | I_ASSORT_WEEK                | exec [dbo].[assort_week]                                               | ош. →58    | 30.10 132101  0:20:31 | 29.10  0:21:09
+31 | CVM_LIVE_ASSORT              | exec dbo.cvm_live_assort;                                              | ош. дальше | 30.10 134132  0:01:13 | 29.10  0:01:13
+32 | I_cont_assort_w              | exec dbo.cont_assort_week                                              | ош. →58    | 30.10 134245  0:02:43 | 29.10  0:02:43
+33 | assort_month                 | exec dbo.assort_month                                                  | ош. →58    | 30.10 134528  0:00:15 | 29.10  0:00:15
+34 | cont_assort_m                | exec dbo.cont_assort_m                                                 | ош. →58    | 30.10 134543  0:00:06 | 29.10  0:00:10
+35 | I_CONTACT_PRICE_SEGMENT      | exec dbo.cont_price_segment                                            | ош. →58    | 30.10 134549  0:20:13 | 29.10  0:19:06
+36 | GLOBAL_CG                    | exec [dbo].[NEW_FOR_GLOBAL_CG] @max_tries = 200;                       | ош. дальше | 30.10 140602  0:00:00 | 29.10  0:00:00
+37 | CLUSTERS                     | exec dbo.clusters @mode = 'current'; exec dbo.cluster_assign @org =... | ош. дальше | 30.10 140602  1:48:38 | 29.10  1:51:35
+38 | CLUSTER_SCORE                | exec dbo.cluster_score;                                                | ош. дальше | 30.10 155440  0:17:14 | 29.10  0:17:05
+39 | PP treatment                 | exec [dbo].[PP_integration]                                            | ош. →58    | 30.10 161154  0:00:16 | 29.10  0:00:17
+40 | PP_EFFECT_MONTH              | exec [dbo].[PP_EFFECT_MONTH]                                           | ош. →58    | 30.10 161210  0:03:14 | 29.10  0:04:07
+41 | I_CH_INDEXEX                 | exec [dbo].[CH_INDEXES]                                                | ош. →58    | 30.10 161524  0:01:40 | 29.10  0:01:23
+42 | LFL_contacts_shops           | exec [dbo].[LFL_contacts_shops]                                        | ош. →58    | 30.10 161704  0:00:07 | 29.10  0:00:16
+43 | I_REPORT                     | exec dbo.for_i_report                                                  | ош. →58    | 30.10 161711  0:00:06 | 29.10  0:00:12
+44 | CVM_BASE_MONTH               | exec dbo.cvm_base_month;                                               | ош. дальше | 30.10 161717  0:00:16 | 29.10  0:00:39
+45 | PRODUCT_DEMAND               | exec dbo.product_demand;                                               | ош. дальше | 30.10 161733  0:00:04 | 29.10  0:00:05
+46 | DELIVERY_REPORT              | exec dbo.delivery_report;                                              | ош. дальше | 30.10 161737  0:12:00 | 29.10  0:11:49
+47 | PROMO_CAMPAIGN_LINK          | exec dbo.promo_campaign_link;                                          | ош. дальше | 30.10 162937  0:00:00 | 29.10  0:00:00
+48 | DISCOUNT_MART                | exec dbo.discount_mart;                                                | ош. дальше | 30.10 162937  0:08:24 | 29.10  0:08:38
+49 | DISC_MODEL_MART              | exec dbo.disc_model_mart;                                              | ош. дальше | 30.10 163801  0:46:09 | 29.10  0:45:30
+50 | DISC_EFFECT                  | exec dbo.disc_effect_mart;                                             | ош. дальше | 30.10 172410  0:04:25 | 29.10  0:07:43
+51 | BONUS_MART                   | exec dbo.bonus_mart;                                                   | ош. дальше | 30.10 172835  0:04:30 | 29.10  0:04:22
+52 | CVM_EFFECT_TODAY             | exec dbo.CVM_EFFECT_TODAY @stop_at = '18:00';                          | ош. дальше | 30.10 173305  0:27:20 | 29.10  0:43:10
+53 | cohort_new                   | exec dbo.cohort_new                                                    | ош. →58    | 30.10 180025  0:00:00 | 29.10  0:05:16
+54 | I_TRENDS                     | exec [dbo].[trends]                                                    | ош. →58    | 30.10 180025  0:36:27 | 29.10  0:36:12
+55 | Mission report               | exec [dbo].[mission_report]                                            | ош. →58    | 30.10 183652  0:00:04 | 29.10  0:00:04
+56 | churn_report                 | exec [dbo].[CHURN_REPORT]                                              | ош. →58    | 30.10 183656  0:00:07 | 29.10  0:00:07
+57 | send success mail            | письмо (Database Mail)                                                 | ош. выход  | 30.10 183703  0:00:00 | 29.10  0:00:00
+58 | send error mail              | письмо (Database Mail)                                                 | ош. выход  | 30.10 ------        - | 29.10        -

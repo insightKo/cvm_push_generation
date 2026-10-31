@@ -1,0 +1,822 @@
+АУДИТ ПРОИЗВОДИТЕЛЬНОСТИ ЗАДАНИЯ «MCI Regular update», ЧАСТЬ 1 — sql-senior, 31.10.2026
+Источник: выгрузка audit\ (procs\*.sql, steps.txt, durations.txt, steps_last_run.txt, tables.csv, server.txt, deps.csv,
+old_audit_0710_perf.txt). В базу не ходил, ничего не запускал, процедуры не правил. Номера строк — по файлам audit\procs\.
+Формат находки: процедура:строки → что тяжело → почему → как исправить → экономия → результат → риск.
+
+==========================================================================================================================
+0. БАЗА ОЦЕНОК
+==========================================================================================================================
+Длительности 30.10.2026 (durations.txt): 21 CVM_CONTACT 1:50:20; 22 CLIENT_ITEM 1:26:15; 37 CLUSTERS 1:48:38;
+38 CLUSTER_SCORE 0:17:14; 26 CVM_CONTACT_DATA_W 0:19:20; 30 I_ASSORT_WEEK 0:20:31; 35 I_CONTACT_PRICE_SEGMENT 0:20:13;
+23 PRODUCT_SCORE_REGION 0:05:37; 25 CVM_CONTACT_DATA 0:00:06. Итого по части 1 — 6 ч 28 мин из 13 ч 05 мин задания.
+От начала шага 21 (09:30:37) до конца шага 35 (14:06:02) — 4 ч 35 мин.
+
+Объёмы окон (модель, не замер):
+- I_CHECK_DELTA 79,7 млн строк ≈ 10 дней перезагрузки (аудит 07.10) → ≈ 8 млн строк чеков в день; I_CHECK 11,56 млрд ≈ 1 450 дней
+  (~4 года); I_CHECKHEADER 1,77 млрд → ≈ 1,2 млн заголовков в день.
+- Заголовки: 6 нед. ≈ 51 млн; 13 нед. ≈ 110 млн; 52 нед. ≈ 445 млн; 56 нед. ≈ 480 млн; вся история 1,77 млрд.
+- Строки чеков: 6 нед. ≈ 340 млн; 13 нед. ≈ 730 млн; 39 нед. ≈ 2,2 млрд.
+- I_PROMO_DELIVERY_REPORT 5,35 млрд с 01.01.2024 (комментарий clusters стр. 692) ≈ 5,2 млн строк в день.
+Калибровка скорости по самим шагам:
+- product_score_region: агрегат 51 млн заголовков + один проход I_CHECK 6 нед. (≈ 340 млн строк) с тремя хэш-соединениями
+  и агрегатом — 5,6 мин → ≈ 60–70 млн строк/мин на «соединение + агрегат» в batch mode при DOP 2.
+- CVM_CONTACT_DATA_W: одна итерация = 5 проходов по полной истории заголовков + 52 нед. + 2 × I_CHECK 6 нед. + 2 × I_CHECK_RULE
+  целиком + вставка ≈ 15 млн строк — 19 мин → проход по полной истории с простым агрегатом ≈ 2–3 мин.
+Ограничения Standard 2019 CU15 (server.txt): batch mode и колоночные операции — DOP 2 на запрос; буферный пул ≤ 128 ГБ;
+кэш колоночных сегментов ≤ 32 ГБ — I_CHECKHEADER (78 ГБ) и I_CHECK (633 ГБ) в него не помещаются, каждый повторный проход —
+снова чтение сегментов. Поэтому главный рычаг — число проходов по большим таблицам, а не хинты.
+Все оценки экономии ниже — по этой модели; фактическое время операторов снимает запрос П1 (раздел 11) — сделать до правок.
+
+==========================================================================================================================
+1. CVM_CONTACT (шаг 21, 110 мин)
+==========================================================================================================================
+Обращения к I_CHECKHEADER: стр. 25 (max DATA), 42 (вся история), 98 (вся история), 130 (56 нед.), 179 (52 нед.), 219 (6 нед.),
+233 (52 нед.), 262 (6 нед. год назад), 275 (6 нед.), 332 (вся история), 371 (6 нед.), 403 (вся история), 448 (вся история),
+701 (6 нед.), 717 (6 нед.) — 15 обращений, 5 из них по всей истории. I_CHECK — 2 прохода за 6 нед. (стр. 544, 610).
+Та же схема в CVM_CONTACT_DATA_W (5 проходов по истории) занимает ≈ 19 мин, значит основная часть 110 мин — в блоках, которых
+в _W нет или они тяжелее: #for_cg (386–422), #weeks (124–169), 52-недельные проходы (179, 233), #main_shop (440–497),
+#push (746–769). Подтвердить П1.
+
+CC-1. CVM_CONTACT:384–422 (#for_cg), использование — 833 и 863–866
+Что тяжело: левое соединение всей истории I_CHECKHEADER (1,77 млрд строк; фильтр даты стр. 416 закомментирован) с
+#for_basic_segment, I_CONTACT_PRICE_SEGMENT (куча 15 млн) и I_CONTACT (15,5 млн) на уровне каждой строки чека, затем два
+COUNT(DISTINCT) по разным колонкам (ID_CONTACT_DATA стр. 390, WEEKNUMBER стр. 391) + AVG, MAX, MIN. Два разных DISTINCT
+план делит на три ветки над одним входом — соединение 1,77 млрд строк считается повторно или идёт через спул в tempdb.
+Почему лишнее: из #for_cg в итог идёт только LTV = h.BUDGET*100 (стр. 833). BUDGET = round(sum(COST_Discount)/100,0) по всей
+истории клиента × организации — это сумма COST_DISCOUNT_FP из #first_purch (стр. 40: тот же источник, ID_CONTACT != 0,
+ID_COMPANY = @idc, все даты). Остальные колонки #for_cg (VISITS, COUNT_WEEK, SHARE_WEEKEND, CARD_SALE, MAX_YM, MIN_WEEK,
+PRICE_INDEX, TOKENS, HAS_PUSH) нигде не читаются — локальная КГ отключена 11.10.2026 (комментарий стр. 434–435).
+Как исправить: блок 384–422 удалить; в финальной вставке
+        , LTV = round(e.COST_DISCOUNT_FP/100,0)*100      -- было h.BUDGET*100; e = #first_purch (inner join стр. 856–859)
+  и убрать «left join #for_cg as h» (стр. 863–866).
+Экономия: 15–40 мин. Основание: самый тяжёлый по форме оператор процедуры (три ветки над 1,77 млрд строк с двумя
+соединениями к строковым таблицам); аналог в _W (один DISTINCT, без этих соединений) — часть 19-минутного шага. Точно — П1.
+Результат: не меняется при двух условиях (П7): I_CONTACT уникальна по (ID_COMPANY, ID_CONTACT) — иначе исходный BUDGET
+умножался на число дублей; ID_ORGANIZATION в I_ORGANIZATION не повторяется. I_CONTACT_PRICE_SEGMENT уникальна по
+(ID_CONTACT, ID_ORGANIZATION, ID_COMPANY) по построению (cont_price_segment, GROUP BY стр. 75–80). Выражение и тип те же.
+Риск: низкий.
+
+CC-2. CVM_CONTACT:32–48, 92–113, 324–336 — три прохода по всей истории вместо одного
+Что тяжело: стр. 98 (сегмент «Новые») — полный проход I_CHECKHEADER и хэш-соединение только ради проверки, что у строки
+#first_purch есть чек (есть всегда: #first_purch собрана из тех же строк). Стр. 332 (#m) — ещё один полный проход
+с COUNT(DISTINCT ID_ORGANIZATION).
+Как исправить: один проход в #hist (без соединения с I_ORGANIZATION — чтобы #m считался по тем же строкам, что сейчас),
+из него #first_purch, «Новые» и #m:
+    declare @d6 date = dateadd(day,+1, dateadd(week,-6,@act_date));
+    drop table if exists #hist;
+    select ID_CONTACT, ID_ORGANIZATION, ID_COMPANY
+         , MIN_DATA = min(DATA), LAST_DATA = max(DATA), LAST_YM = max(YEAR_MONTH), FIRST_YM = min(YEAR_MONTH)
+         , COUNT_CHECK_FP = count(ID_CHECK), COST_DISCOUNT_FP = sum(COST_DISCOUNT)
+         , CD_6W = sum(iif(DATA >= @d6, COST_DISCOUNT, 0)), MIN_DATA_6W = min(iif(DATA >= @d6, DATA, null))
+    into #hist
+    from I_CHECKHEADER (nolock)
+    where ID_COMPANY = @idc and ID_CONTACT != 0
+    group by ID_CONTACT, ID_ORGANIZATION, ID_COMPANY;
+    create clustered columnstore index cci_hist on #hist;
+
+    drop table if exists #first_purch;
+    select h.ID_CONTACT, h.ID_ORGANIZATION, h.ID_COMPANY, h.MIN_DATA, h.LAST_DATA, h.LAST_YM, h.FIRST_YM,
+           h.COUNT_CHECK_FP, h.COST_DISCOUNT_FP
+    into #first_purch
+    from #hist h
+    join I_ORGANIZATION c (nolock) on c.ID_ORGANIZATION = h.ID_ORGANIZATION;
+
+    -- «Новые» вместо стр. 92–113
+    insert into #for_basic_segment
+    select f.ID_COMPANY, f.ID_ORGANIZATION, f.ID_CONTACT, 1, @act_date
+    from #first_purch f
+    where f.MIN_DATA between @d6 and @act_date
+      and not exists (select 1 from #0 g where g.ID_CONTACT = f.ID_CONTACT and g.ID_COMPANY = f.ID_COMPANY
+                                           and g.ID_ORGANIZATION = f.ID_ORGANIZATION);
+
+    -- #m вместо стр. 326–336
+    drop table if exists #m;
+    select ID_CONTACT
+         , ID_SALE_CHANNEL = iif(count(*) = 2, 2, max(ID_ORGANIZATION))
+         , ID_COMPANY
+         , COST_DISCOUNT_B = iif(count(*) = 2, sum(CD_6W), 0)
+         , MIN_DATA_M      = iif(count(*) = 2, null, min(MIN_DATA_6W))
+    into #m
+    from #hist
+    where ID_ORGANIZATION <> 2
+    group by ID_CONTACT, ID_COMPANY;
+Экономия: 4–8 мин (два прохода по 1,77 млрд строк по 2–3 мин + хэш-соединение стр. 98–102).
+Результат: не меняется. В #hist одна строка на (клиент, организация), поэтому count(*) по организациям <> 2 =
+count(distinct ID_ORGANIZATION); суммы decimal складываются точно, тип суммы тот же; клиент 0 в исходном #m есть, но в итог
+не попадает (inner join #first_purch, где ID_CONTACT != 0); соединение с I_ORGANIZATION сохранено для #first_purch
+(при неповторяющемся ID_ORGANIZATION — П7).
+Риск: низкий.
+
+CC-3. CVM_CONTACT:438–497 (#main_shop, любимый магазин) — сортировка всей истории
+Что тяжело: группировка всей истории по (клиент, магазин, компания, день) ≈ 1,5 млрд групп и ROW_NUMBER() over (partition by
+ID_CONTACT, ID_COMPANY order by DATA desc) над ними; клиент 0 (чеки без карты) тоже считается — фильтра ID_CONTACT нет.
+Нужны только 8 последних пар (магазин, день) клиента (стр. 460, 475).
+Как исправить:
+  1) в CTE t (стр. 449) добавить «and ID_CONTACT != 0» — клиент 0 в итог не попадает (inner join #first_purch);
+  2) двухступенчато: сначала последние 26 недель; у клиентов с ≥ 8 парами в окне старшие строки не нужны (они старше всех
+     строк окна и получают RN > 8); остальным дочитать всю историю:
+    declare @dms date = dateadd(week,-26,@act_date);
+    drop table if exists #sd, #few;
+    select ID_CONTACT, ID_SHOP, ID_COMPANY, DATA, COST_DISCOUNT = sum(COST_DISCOUNT)
+    into #sd
+    from I_CHECKHEADER (nolock)
+    where ID_COMPANY = @idc and ID_CONTACT != 0 and DATA > @dms
+    group by ID_CONTACT, ID_SHOP, ID_COMPANY, DATA;
+
+    select k.ID_CONTACT
+    into #few
+    from (select distinct ID_CONTACT from #hist) k
+    left join (select ID_CONTACT, n = count(*) from #sd group by ID_CONTACT) s on s.ID_CONTACT = k.ID_CONTACT
+    where isnull(s.n, 0) < 8;
+
+    insert into #sd
+    select h.ID_CONTACT, h.ID_SHOP, h.ID_COMPANY, h.DATA, sum(h.COST_DISCOUNT)
+    from I_CHECKHEADER (nolock) h
+    where h.ID_COMPANY = @idc and h.ID_CONTACT != 0 and h.DATA <= @dms
+      and exists (select 1 from #few f where f.ID_CONTACT = h.ID_CONTACT)
+    group by h.ID_CONTACT, h.ID_SHOP, h.ID_COMPANY, h.DATA;
+    -- далее CTE t (стр. 442–453) читает #sd вместо I_CHECKHEADER; a, x, y и вставка — без изменений
+Экономия: 3–8 мин (агрегат и сортировка частых клиентов — по 26 неделям; второй проход по истории остаётся, но с битовой
+картой по #few и без строк частых клиентов). Порог 26 недель подобрать по П1.
+Результат: не меняется (порядок пар с одинаковой DATA в исходнике тоже не определён — граница окна идёт по DATA и такие пары
+не разрезает).
+Риск: низкий.
+
+CC-4. CVM_CONTACT:124–291 — шесть проходов по окнам 6–56 недель
+Что тяжело: стр. 130 (56 нед., ≈ 480 млн), 179 (52 нед., ≈ 445 млн), 233 (52 нед.), 219, 262, 275 (по 6 нед., ≈ 51 млн).
+Как исправить: один проход ≈ 59 нед. (56 нед. + окно «год назад») в #wk с признаками окон, все шесть CTE — из него:
+    declare @d52 date = dateadd(day,+1, dateadd(week,-52,@act_date))
+          , @d56 date = dateadd(day,+1, dateadd(week,-56,@act_date))
+          , @ly1 date = dateadd(year,-1, dateadd(day,+1, dateadd(week,-6,@act_date)))
+          , @ly2 date = dateadd(year,-1, @act_date);
+    declare @dw date = iif(@ly1 < @d56, @ly1, @d56);
+    drop table if exists #wk;
+    select ID_CONTACT, ID_ORGANIZATION, ID_COMPANY, WEEKNUMBER
+         , N56 = sum(iif(DATA >= @d56, 1, 0)), N52 = sum(iif(DATA >= @d52, 1, 0))
+         , N6  = sum(iif(DATA >= @d6,  1, 0)), NLY = sum(iif(DATA between @ly1 and @ly2, 1, 0))
+    into #wk
+    from I_CHECKHEADER (nolock)
+    where ID_COMPANY = @idc and DATA between @dw and @act_date
+    group by ID_CONTACT, ID_ORGANIZATION, ID_COMPANY, WEEKNUMBER;
+    create clustered columnstore index cci_wk on #wk;
+  Замены (клиента 0 не отсекать там, где исходник его не отсекал):
+    стр. 126–136 (a для #weeks): select ID_CONTACT, ID_ORGANIZATION, WEEKNUMBER, ID_COMPANY from #wk where N56 > 0 and ID_CONTACT != 0
+    стр. 175–182 (c):            select ID_CONTACT, ID_ORGANIZATION, ID_COMPANY, E_SEGMENT = sum(N6) from #wk where ID_CONTACT != 0
+                                 group by ID_CONTACT, ID_ORGANIZATION, ID_COMPANY having sum(N52) > 0
+    стр. 215–225 (t):            … from #wk where ID_CONTACT != 0 group by … having sum(N6) > 0
+    стр. 233–248 (Отток, без фильтра клиента): строки «a» = select ID_CONTACT, ID_ORGANIZATION, ID_COMPANY from #wk
+                                 group by … having sum(N52) > 0
+    стр. 259–267 (b, год назад): … from #wk group by … having sum(NLY) > 0
+    стр. 275–291 (Активные):     … from #wk where ID_CONTACT != 0 group by … having sum(N6) > 0
+  LAG в #weeks (стр. 152) остаётся как есть, но над #wk.
+Экономия: 4–8 мин (≈ 0,5 млрд прочитанных строк окна вместо ≈ 1,6 млрд; агрегаты — по колоночной #wk).
+Результат: не меняется (те же границы, BETWEEN включительно; E_SEGMENT — сумма int, как sum(IIF(…,1,0))).
+Риск: низкий; #wk ≈ 250–300 млн строк — столько же групп сейчас строит CTE a для #weeks.
+
+CC-5. CVM_CONTACT:520–645 (любимые товары и категории) — два прохода I_CHECK и соединение через OR
+Что тяжело: два раздельных прохода I_CHECK за 6 нед. (≈ 340 млн строк каждый, стр. 544 и 610); стр. 614–619 — условие
+соединения через OR по пяти колонкам: хэш возможен только по ID_CONTACT, остальное — остаточный предикат по всем парам
+«выбор × строка чека клиента».
+Как исправить: строки чеков прочитать один раз и только клиентов с выбором; OR заменить равенствами (так уже сделано в clusters,
+шаг 8б, стр. 631–634):
+    -- t2 обоих блоков (с lead) — во временные #fp_t2 и #fc_t2, как сейчас (стр. 522–535 и 580–602)
+    select ID_CONTACT into #fav_cli from #fp_t2 union select ID_CONTACT from #fc_t2;
+    select a.ID_CONTACT, a.ID_ORGANIZATION, a.ID_COMPANY, a.DATA, a.ID_PRODUCT,
+           a.ID_CATEGORY_2, a.ID_CATEGORY_3, a.ID_CATEGORY_4, a.ID_CATEGORY_5
+    into #chk_fav
+    from I_CHECK (nolock) a
+    where a.ID_COMPANY = @idc and a.DATA between @d6 and @act_date
+      and exists (select 1 from #fav_cli f where f.ID_CONTACT = a.ID_CONTACT);
+    create clustered columnstore index cci_chk_fav on #chk_fav;
+
+    -- товар: (клиент, организация), где куплен выбранный товар в срок выбора
+    select distinct p.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY, flg_use = 1
+    into #fav_prod
+    from #fp_t2 p
+    join #chk_fav c on c.ID_CONTACT = p.ID_CONTACT and c.ID_PRODUCT = p.ID_PRODUCT
+                   and c.DATA >= p.DATA and c.DATA < p.next_date;
+
+    -- категория: развернуть уровни и соединить по равенству
+    select distinct c.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY, c.DATA, k.KIND, k.KEYVAL
+    into #chk_fav_k
+    from #chk_fav c
+    cross apply (values (0, cast(c.ID_PRODUCT as bigint)), (2, cast(c.ID_CATEGORY_2 as bigint)), (3, cast(c.ID_CATEGORY_3 as bigint)),
+                        (4, cast(c.ID_CATEGORY_4 as bigint)), (5, cast(c.ID_CATEGORY_5 as bigint))) k(KIND, KEYVAL)
+    where k.KEYVAL is not null;
+    -- #fc_k: то же для #fc_t2 (ID_CONTACT, DATA, next_date, KIND, KEYVAL), KEYVAL is not null
+    select distinct f.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY, flg_use = 1
+    into #fav_cat
+    from #fc_k f
+    join #chk_fav_k c on c.ID_CONTACT = f.ID_CONTACT and c.KIND = f.KIND and c.KEYVAL = f.KEYVAL
+                     and c.DATA >= f.DATA and c.DATA < f.next_date;
+    -- #fav_prod_choice / #fav_cat_choice — из #fp_t2 / #fc_t2 (все выбравшие), не из #fav_prod / #fav_cat
+Экономия: 2–6 мин (один проход I_CHECK вместо двух; полусоединение по клиентам с выбором — ~19 % клиентов окна по
+комментарию clusters стр. 610; без остаточного OR). Объём выборов — П15.
+Результат: не меняется. FAV_*_USE = 1 ровно там, где у (клиент, организация) есть строка в срок выбора; строки без совпадения
+в исходнике получали организацию NULL или флаг 0 и давали 0 через isnull (стр. 839–840). Равенство с NULL в исходном OR
+ложно — то же, что отбор KEYVAL is not null.
+Риск: средний (переписывание логики) — сверить флаги на одном прогоне.
+
+CC-6. CVM_CONTACT:781–889 — вставка 15 млн строк в кучу без TABLOCK
+Что тяжело: INSERT в I_CVM_CONTACT (куча 7,5 ГБ) идёт с полным протоколированием и в один поток; таблица пустая всё время
+вставки (TRUNCATE стр. 782).
+Как исправить: минимум — «INSERT INTO I_CVM_CONTACT WITH (TABLOCK)»: пустая куча, SIMPLE → минимальное протоколирование
+и параллельная вставка. Лучше — собирать в служебную кучу той же структуры и подменять:
+    truncate table dbo.I_CVM_CONTACT_STAGE;
+    insert into dbo.I_CVM_CONTACT_STAGE with (tablock) select … ;      -- тот же SELECT, стр. 785–889
+    begin tran;
+        truncate table dbo.I_CVM_CONTACT;
+        alter table dbo.I_CVM_CONTACT_STAGE switch to dbo.I_CVM_CONTACT;
+    commit;
+Экономия: 2–4 мин (≈ 8 ГБ журнала меньше); таблица больше не бывает пустой.
+Результат: не меняется.
+Риск: SWITCH ждёт блокировку схемы — длинный чужой SELECT по I_CVM_CONTACT задержит подмену; служебная таблица новая —
+только с согласия Елены.
+
+CC-7. CVM_CONTACT:12–889 — временные на миллионы строк — кучи (п. 12 чек-листа)
+#first_purch (≈ 25 млн), #for_basic_segment и копии #0/#1/#2/#5/#23, #weeks, #all_p, #for_cg, #m, #main_shop, #d_contact,
+#fav_* — кучи; финальная вставка соединяет 12 таких таблиц по 15–25 млн строк построчно.
+Как исправить: после каждого SELECT … INTO — «create clustered columnstore index cci_<имя> on #<имя>» (или CREATE TABLE …
+INDEX cci CLUSTERED COLUMNSTORE + INSERT … WITH (TABLOCK)).
+Экономия: 2–4 мин (соединения колоночных временных идут пакетно). Результат: не меняется. Риск: низкий.
+
+CC-8. CVM_CONTACT:131, 178–180, 221, 242, 263, 287, 377, 527, 549, 589, 620, 702, 723 — окна по переменной @act_date
+Число строк в BETWEEN с переменной оценивается догадкой, а не 51/445 млн → неточные гранты памяти и сбросы в tempdb.
+Как исправить: OPTION (RECOMPILE) на этих операторах.
+Экономия: 0–3 мин (по last_spills из П1). Результат: не меняется. Риск: низкий (компиляция — секунды).
+
+Итого CVM_CONTACT: 30–60 мин (верхние границы не складываются; главное — CC-1).
+
+==========================================================================================================================
+2. CLIENT_ITEM (шаг 22, 86 мин): client_item_night → client_item_load → client_item_keys_day → client_item_stats
+==========================================================================================================================
+CI-1. client_item_load:60–102, 170–193 — каждую ночь переписываются все перезалитые дни
+Что тяжело: список дней — все диапазоны перезалитых загрузок I_CHECK_DELTA из service.loading_log (стр. 82–101); при
+перезагрузке 10 дней это ≈ 10–11 дней каждую ночь (в первую пятницу месяца — ≈ 3 мес., по аудиту 07.10). На каждый день:
+TRUNCATE секции, вставка ≈ 6 млн строк с сортировкой в один поток (стр. 179–185, ORDER BY … MAXDOP 1) и ключи дня ≈ 13 млн
+строк тоже в один поток с сортировкой (keys_day стр. 43–77). Дни, у которых чеки не изменились, переписываются в то же самое.
+Как исправить: перед TRUNCATE сравнить день с загруженным точным сравнением множеств; ключи считать во временную без
+сортировки и тоже сравнивать; писать только отличающееся:
+    declare @n_new bigint, @n_old bigint, @day_same bit = 0;
+    select @n_new = count_big(*) from #chunk where DATA = @d;
+    select @n_old = count_big(*) from dbo.I_CLIENT_ITEM_DAY with (nolock) where DATA = @d and ID_COMPANY = @idc;
+    if @n_new = @n_old
+       and not exists (select ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, QTY, EXT5
+                       from #chunk where DATA = @d
+                       except
+                       select ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, QTY, ID_CATEGORY_5_EXT
+                       from dbo.I_CLIENT_ITEM_DAY with (nolock) where DATA = @d and ID_COMPANY = @idc)
+        set @day_same = 1;
+    -- @day_same = 0 → как сейчас: TRUNCATE секции дня + INSERT … ORDER BY ID_PRODUCT OPTION (MAXDOP 1)
+    -- ключи: тот же SELECT, что keys_day стр. 45–75, но INTO #k без ORDER BY и без MAXDOP 1;
+    --   если count(#k) = числу строк секции KEY_DAY и (#k EXCEPT секция KEY_DAY) пусто — секцию ключей не трогать,
+    --   иначе TRUNCATE секции KEY_DAY + INSERT … SELECT … FROM #k ORDER BY KEY_TYPE, ID_KEY OPTION (MAXDOP 1);
+    -- CVM_CLIENT_ITEM_CAT_VER обновлять как сейчас (стр. 81–83 keys_day)
+  Строки обеих таблиц уникальны по ключу (GROUP BY в #chunk стр. 165 и в keys_day), поэтому «равное число строк + пустое
+  EXCEPT» означает совпадение таблиц. Ключи сравниваются отдельно — смена I_MISSION или I_CVM_PRODUCT_CATEGORY пересоберёт
+  ключи и при неизменных чеках.
+Экономия: 0–55 мин; при 7–8 неизменных днях из 10 — 35–50 мин; в первую пятницу — часы. Основание: 86 мин / ≈ 10–11 дней
+≈ 7–8 мин на день, из них бóльшая часть — запись дня и ключей в один поток; сравнение — десятки секунд. Сколько дней реально
+меняется и не перенумеровывает ли перезаливка ID_CHECK — П9 (если перенумеровывает, выигрыша нет).
+Результат: не меняется. Риск: средний (логика транзакции дня); неизменные дни остаются физически прежними.
+
+CI-2. client_item_keys_day:17–36 — справочники пересобираются на каждый день
+#miss (DISTINCT по I_MISSION + CCI), #kd_cat (312 тыс. строк, HASHBYTES, CCI) и CHECKSUM_AGG — при каждом вызове, ≈ 10 раз
+за ночь.
+Как исправить: строить один раз в client_item_load до цикла дней; в keys_day — «IF OBJECT_ID('tempdb..#kd_cat') IS NULL …»
+(временные вызывающей процедуры видны вложенной), @ver передать параметром.
+Экономия: 1–3 мин. Результат: не меняется. Риск: низкий.
+
+CI-3. client_item_keys_day:50, 59, 70 — секция дня читается три раза
+Те же строки только что вставлены из #chunk (load стр. 179–183). Ключи можно считать из «#chunk WHERE DATA = @d» (те же
+колонки ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, EXT5) — одно чтение колоночной временной вместо трёх
+чтений секции.
+Экономия: 1–3 мин. Результат: не меняется. Риск: низкий; keys_day должна по-прежнему уметь читать секцию (пересборка ключей
+без #chunk).
+
+CI-4. client_item_stats:58–87 (вызов client_item_night:10) — пересчёт статистик всей витрины ключей в составе шага
+Порог SQRT(1000 × строк) (стр. 66) при ежедневной перезаписи ~10 секций по ~13 млн строк перекрывается каждую ночь → все
+статистики I_CLIENT_ITEM_KEY_DAY пересчитываются по всей таблице (миллиарды строк) внутри шага 22.
+Как исправить (одно из):
+  а) инкрементальные статистики секционированной таблицы — один раз (вне ночи):
+       UPDATE STATISTICS dbo.I_CLIENT_ITEM_KEY_DAY (<статистика>) WITH FULLSCAN, INCREMENTAL = ON, NORECOMPUTE;
+     ночью — только перезаписанные секции:
+       UPDATE STATISTICS dbo.I_CLIENT_ITEM_KEY_DAY (<статистика>) WITH RESAMPLE ON PARTITIONS (<номера секций дней>), NORECOMPUTE;
+  б) вынести client_item_stats из шага 22 в отдельное задание после «MCI Regular update».
+Экономия: 0–20 мин — равна сумме строк MODE = 'stats' в CVM_CLIENT_ITEM_LOG (П3, П14).
+Результат: данные не меняются; меняется только свежесть статистик для запросов портала (в «б» — на несколько часов).
+Риск: «а» — разовый FULLSCAN всей витрины (DDL на витрине — по согласованию); «б» — планы портала до пересчёта.
+
+==========================================================================================================================
+3. CLUSTERS (шаг 37, 109 мин): clusters 'current' + cluster_assign @org = 1 и 3 (+ cluster_assign_calc)
+==========================================================================================================================
+Каждую ночь @d_last сдвигается на день, поэтому текущее окно 'C' на новую дату считается целиком (стр. 228–238) для обеих
+организаций, а прошлое 'C' удаляется (стр. 805–813). На одну организацию: I_CHECKHEADER 13–15 нед. — 3 прохода (стр. 312,
+339, 363) + соединение для I_CHECK_RULE (стр. 660); I_CHECK — 13 нед. × 3 (шаг 3 стр. 404, шаг 4 стр. 424, шаг 8б стр. 625),
+13 недельных проходов шага 5 (ещё 13 нед.), 39 нед. шага 6 (стр. 491) — ≈ 91 неделя строк ≈ 5 млрд строк скана;
+I_PROMO_DELIVERY_REPORT 13 нед. (стр. 711). Для организации 3 читаются те же группы строк, если сегменты перемешаны по
+ID_ORGANIZATION (П6). Пошаговое время — в I_FOR_CLUSTER_LOG (П2); снять до правок.
+
+CL-1. clusters:272–277 и 805–813 — удаление окон из колоночных таблиц порциями по 5 млн
+Что тяжело: каждую ночь удаляется прошлое текущее окно: по коду ~120–190 млн строк I_FOR_CLUSTER_CATEGORY (комментарии стр. 420,
+804) плюс миссии и клиенты (в таблицах 187 млн и 15,6 млн строк). DELETE из CCI — пометка каждой строки в карте удалений
+с протоколированием; удалённые строки остаются в группах строк и читаются при каждом скане окна (cluster_assign стр. 375,
+портал).
+Как исправить: секционировать три таблицы по REFERENCE_DATE (как I_CLIENT_ITEM_DAY — своя секция на дату окна), окно удалять
+TRUNCATE секции (метаданные) и сливать пустую границу:
+    -- один раз, вне ночи (DDL на таблицах Елены — по согласованию):
+    CREATE PARTITION FUNCTION pf_FOR_CLUSTER (date) AS RANGE RIGHT FOR VALUES (<даты окон из I_FOR_CLUSTER_LOG>);
+    CREATE PARTITION SCHEME ps_FOR_CLUSTER AS PARTITION pf_FOR_CLUSTER ALL TO ([PRIMARY]);
+    CREATE CLUSTERED COLUMNSTORE INDEX <имя CCI> ON dbo.I_FOR_CLUSTER_CATEGORY WITH (DROP_EXISTING = ON)
+        ON ps_FOR_CLUSTER (REFERENCE_DATE);                                  -- так же I_FOR_CLUSTER_MAIN, I_FOR_CLUSTER_MISSION
+    -- в clusters перед окном: SPLIT границ @w_end и @w_end + 1 в пустом хвосте (как client_item_partitions);
+    -- вместо стр. 807–812 — после окон ОБЕИХ организаций, для каждой даты прошлого 'C':
+    SET @sql = CONCAT(N'TRUNCATE TABLE dbo.I_FOR_CLUSTER_CATEGORY WITH (PARTITIONS (', $PARTITION.pf_FOR_CLUSTER(@old_c), N'));');
+    EXEC sys.sp_executesql @sql;               -- так же MISSION, MAIN; затем ALTER PARTITION FUNCTION pf_FOR_CLUSTER() MERGE RANGE (@old_c)
+  Секция — дата, а не организация: TRUNCATE только после окон обеих организаций и только если на эту дату в I_FOR_CLUSTER_LOG
+  нет окон, которые остаются; иначе — прежний DELETE порциями.
+Экономия: 5–15 мин (≈ 200–250 млн протоколируемых удалений за ночь → операции над метаданными) + быстрее чтение окна
+в cluster_assign и портале.
+Результат: не меняется. Риск: разовая перестройка трёх CCI; секции добавляются и сливаются каждую ночь — MERGE только по пустым.
+
+CL-2. clusters:393–434 — шаги 3 и 4 читают одно окно I_CHECK дважды
+Шаг 3 (#l, стр. 404–410) и шаг 4 (категории, стр. 424–430): одни и те же фильтры (организация, 13 нед., клиенты #c, без
+табака). Один проход в #lc на уровне (клиент, группа, признак нон-фуда), из него оба шага:
+    DROP TABLE IF EXISTS #lc;
+    CREATE TABLE #lc (ID_CONTACT int NOT NULL, CAT_KEY int NULL, IS_NF int NOT NULL, LINES int NOT NULL,
+                      BUDGET decimal(38, 2) NULL,        -- тип = тип SUM(COST_DISCOUNT) в исходнике (сверить)
+                      PROMO_LINES int NOT NULL, CARD_DISC_LINES int NOT NULL, INDEX cci CLUSTERED COLUMNSTORE);
+    INSERT INTO #lc WITH (TABLOCK) (ID_CONTACT, CAT_KEY, IS_NF, LINES, BUDGET, PROMO_LINES, CARD_DISC_LINES)
+    SELECT c.ID_CONTACT
+         , CASE WHEN p.CATEGORY_NAME IS NOT NULL THEN p.CATEGORY_ID END      -- NULL: товара нет в #prod или группа без названия
+         , CASE WHEN c.ID_CATEGORY_2 IN (2, 3) THEN 1 ELSE 0 END
+         , COUNT(*), SUM(c.COST_DISCOUNT)
+         , SUM(CASE WHEN c.REAL_DISCOUNT / NULLIF(c.REAL_COST, 0) > 0.1 THEN 1 ELSE 0 END)
+         , SUM(CASE WHEN c.DISCOUNT > 0 THEN 1 ELSE 0 END)
+    FROM dbo.I_CHECK AS c (nolock)
+    LEFT JOIN #prod AS p ON p.ID_PRODUCT = c.ID_PRODUCT
+    WHERE c.ID_COMPANY = @idc AND c.ID_ORGANIZATION = @org AND c.DATA BETWEEN @w_start AND @w_end AND c.ID_CONTACT <> 0
+      AND EXISTS (SELECT 1 FROM #c WHERE #c.ID_CONTACT = c.ID_CONTACT)
+      AND NOT EXISTS (SELECT 1 FROM #tob AS t WHERE t.ID_PRODUCT = c.ID_PRODUCT)
+    GROUP BY c.ID_CONTACT, CASE WHEN p.CATEGORY_NAME IS NOT NULL THEN p.CATEGORY_ID END,
+             CASE WHEN c.ID_CATEGORY_2 IN (2, 3) THEN 1 ELSE 0 END;
+    -- шаг 3: SELECT ID_CONTACT, LINES = SUM(LINES), BUDGET = SUM(BUDGET),
+    --               NFOOD_BUDGET = SUM(CASE WHEN IS_NF = 1 THEN BUDGET ELSE 0 END),
+    --               PROMO_LINES = SUM(PROMO_LINES), CARD_DISC_LINES = SUM(CARD_DISC_LINES) INTO #l FROM #lc GROUP BY ID_CONTACT;
+    -- шаг 4: SELECT ID_CONTACT, CAT_KEY, BUDGET = SUM(BUDGET), LINES = SUM(LINES) FROM #lc WHERE CAT_KEY IS NOT NULL
+    --        GROUP BY ID_CONTACT, CAT_KEY  → JOIN #cat → INSERT I_FOR_CLUSTER_CATEGORY (как стр. 418–431)
+Экономия: 4–10 мин на обе организации (минус один проход ≈ 730 млн строк для орг. 1 и столько же скана для орг. 3).
+Результат: не меняется — суммы decimal (комментарий стр. 438) и счётчики складываются точно; табак отсекается тем же #tob
+(= IS_TOBACCO = 1); товары вне #prod и группы без названия исключаются из шага 4 так же, как inner join и
+p.CATEGORY_NAME IS NOT NULL стр. 425. Тип колонки BUDGET в #lc взять точно как у SUM(COST_DISCOUNT) (или SELECT … INTO).
+Риск: низкий; #lc ≈ 150–200 млн строк — как хэш-агрегат шага 4 сейчас.
+
+CL-3. clusters:336–370 — заголовки окна читаются ещё дважды (#dd 15 нед. и #s 13 нед.)
+#dd строить на уровне (клиент, день, магазин) с CHECKS = COUNT(*) и BUDGET = SUM(COST_DISCOUNT); #s = SUM(CHECKS) по
+(клиент, магазин) из строк 13 нед.; #d и #kb — суммированием по магазинам.
+Экономия: 1–2 мин на организацию. Результат: не меняется (decimal и счётчики). Риск: низкий.
+
+CL-4. clusters:192–821 — две организации — два полных набора проходов
+Окно организации 3 (e-com) повторяет все проходы по I_CHECK и I_CHECKHEADER; при перемешанных по ID_ORGANIZATION сегментах
+(П6) читаются те же группы строк, что для организации 1.
+Как исправить: при совпадении @d_last у организаций 1 и 3 — шаги 1–8 одним проходом с ID_ORGANIZATION IN (1, 3) и ключом
+(организация, клиент) во всех временных; при несовпадении — как сейчас.
+Экономия: 10–30 мин, если П6 покажет перемешанные сегменты; ~0, если сегменты однородны. Доля орг. 3 — в П2.
+Результат: не меняется. Риск: крупная переработка процедуры — только после П2 и П6.
+
+CL-5. clusters:482–499 — календарные миссии: 39 недель I_CHECK каждую ночь
+Окно 52 нед. сдвигается на день, а 39 недель пересчитываются целиком (≈ 2,2 млрд строк скана с битовой картой по товарам
+календарных миссий).
+Как исправить: дневные частичные итоги (организация × клиент × миссия × день: CHECKS, BUDGET) в постоянной колоночной таблице,
+секционированной по дню; ночью пересчитывать только перезалитые (service.loading_log, как client_item_load) и новые дни;
+шаг 6 = сумма по дням окна. При смене справочника миссий (#pm) — полная пересборка.
+Экономия: 5–12 мин (орг. 1; орг. 3 — меньше). Результат: не меняется (правило MAIN >= COUNT_MAIN считается на чек, чек лежит
+в одном дне — комментарий стр. 438). Риск: новая таблица — только после согласования с Еленой.
+
+CL-6. clusters:222–238 — окно 'C' пересчитывается каждую ночь — ВОПРОС ЕЛЕНЕ
+Сейчас каждую ночь: новое текущее окно на вчерашнюю дату для двух организаций + присвоение + скоры (шаги 37–38, ≈ 2 ч 06 мин).
+Вариант: считать 'C' раз в неделю (или только когда @d_last − дата последнего 'C' ≥ 7); в остальные ночи шаги 37–38 выходят
+сразу (cluster_assign уже умеет @skip_if_done).
+Экономия: ≈ 100–125 мин в 6 ночей из 7.
+Результат: МЕНЯЕТСЯ свежесть — I_CLUSTER_CONTACT и I_CLUSTER_*_SCORE обновляются раз в неделю, а не ежедневно; логика окна
+и модели та же.
+Риск: портал и выборки по кластерам видят окно до 6 дней старше.
+
+CL-7. cluster_assign_calc:76–83, 142–147 — MIN по VALUES в каждой строке
+Подзапросы (SELECT MIN(t.x) FROM (VALUES …)) — 4 на каждую из ~8 млн строк окна: построчные вложенные циклы по константам.
+Как исправить: те же минимумы выражениями (A* и B* не бывают NULL: ISNULL(…, 0e0) в z), например попарно IIF(x <= y, x, y).
+Экономия: 0,5–2 мин. Результат: не меняется (MIN по тем же float). Риск: низкий; самопроверка 67/53 строк (cluster_assign
+стр. 304–331) поймает ошибку.
+
+CL-8. clusters:285–317, 336–345, 394–410, 617–636 и др. — SELECT … INTO куча, затем CCI
+Для больших временных (#c ≈ 8 млн, #dd ≈ 80–100 млн, #l, #fl) — двойная запись. CREATE TABLE … INDEX cci CLUSTERED
+COLUMNSTORE + INSERT … WITH (TABLOCK) пишет сразу сжатыми группами.
+Экономия: до 1–2 мин на организацию. Результат: не меняется. Риск: низкий.
+
+CL-9. clusters:163, 214, 216, 235, 244 — чтение без NOLOCK (п. 13)
+163: «FROM dbo.I_LOYALTY_PROMO» → «FROM dbo.I_LOYALTY_PROMO (nolock)»; 214, 216, 235, 244: «FROM dbo.I_FOR_CLUSTER_LOG» →
+«(nolock)».
+
+==========================================================================================================================
+4. CLUSTER_SCORE (шаг 38, 17 мин)
+==========================================================================================================================
+CS-1. cluster_score:100–122 и product_score_region:69–93 — одно окно 6 нед. читается в разных шагах
+Оба строят суммы чеков за 6 нед. по ID_CHECK (#check) и проходят I_CHECK за 6 нед. (≈ 340 млн строк) по клиентам SEGMENT 1–4;
+то же окно I_CHECK читают CVM_CONTACT (CC-5) и CVM_CONTACT_DATA_W (W-6, на дату недели).
+Как исправить: один проход за ночь (после шага 21) в постоянную колоночную таблицу «строки чеков клиентов за 6 нед.»
+(ID_CHECK, ID_CONTACT, ID_SHOP, ID_PRODUCT, N_LINES, COST_DISCOUNT, DATA); шаги 23 и 38 читают её.
+Экономия: 3–6 мин на двух шагах.
+Результат: ВОПРОС ЕЛЕНЕ — float-суммы (cluster_score стр. 101, 113) при другом порядке сложения могут разойтись в последних
+знаках; плюс новая таблица — только по согласованию.
+Риск: средний.
+Остальное в cluster_score соответствует объёму (≈ 340 млн строк → ≈ 300 млн строк #line и две агрегации по ним); NOLOCK — везде.
+
+==========================================================================================================================
+5. CVM_CONTACT_DATA_W (шаг 26, 19 мин) и CVM_CONTACT_DATA (шаг 25, 6 с)
+==========================================================================================================================
+W-1. CVM_CONTACT_DATA_W:488–562 — I_CHECK_RULE (1,8 млрд строк) читается целиком дважды
+#pp_use (стр. 501–504) и #cvm_use (стр. 540–543) соединяют заголовки 6 нед. с I_CHECK_RULE без отсечения по ID_CHECK — два
+полных прохода таблицы. В CVM_CONTACT это уже исправлено (стр. 694–733: диапазон ID_CHECK и один проход).
+Как исправить:
+    declare @d6 date = dateadd(day,+1, dateadd(week,-6,@act_date)), @chk_min bigint, @chk_max bigint;
+    select @chk_min = min(ID_CHECK), @chk_max = max(ID_CHECK)
+    from I_CHECKHEADER (nolock)
+    where DATA between @d6 and @act_date and ID_COMPANY = @idc;
+
+    drop table if exists #rule_w;
+    select a.ID_CONTACT, a.ID_ORGANIZATION, a.ID_COMPANY
+         , PP_FLG  = max(iif(p.TYPE_PROMO in ('5ПП', '6ПП'), 1, 0))      -- литералы как в исходнике (стр. 493, 532)
+         , CVM_FLG = max(iif(p.TYPE_PROMO = 'CVM', 1, 0))
+    into #rule_w
+    from I_CHECKHEADER (nolock) a
+    join I_CHECK_RULE (nolock) b on a.ID_CHECK = b.ID_CHECK and a.ID_COMPANY = b.ID_COMPANY
+    join (select ID_CAMPAIGN, TYPE_PROMO from I_PROMO (nolock)
+          where TYPE_PROMO in ('5ПП', '6ПП', 'CVM') and ID_COMPANY = @idc
+          group by ID_CAMPAIGN, TYPE_PROMO) p on p.ID_CAMPAIGN = b.ID_CAMPAIGN
+    where a.DATA between @d6 and @act_date and a.ID_COMPANY = @idc
+      and b.ID_CHECK between @chk_min and @chk_max
+    group by a.ID_CONTACT, a.ID_ORGANIZATION, a.ID_COMPANY;
+    -- #pp_use / #cvm_use: #all_p left join #rule_w, flg_use = isnull(PP_FLG, 0) / isnull(CVM_FLG, 0)
+Экономия: 3–8 мин (два полных прохода по 1,8 млрд строк → один с отсечением сегментов по ID_CHECK; работает, если ID_CHECK
+растёт с датой — П10).
+Результат: не меняется (любой чек, прошедший соединение с заголовками окна, лежит в [@chk_min, @chk_max]; кампания и в ПП,
+и в CVM даёт оба флага, как два отдельных прохода).
+Риск: низкий.
+
+W-2. CVM_CONTACT_DATA_W:57–74, 102–123, 180–191, 241–265 — четыре прохода по всей истории (≤ @act_date)
+Как в CC-2: один проход в #hist (без соединения с I_ORGANIZATION и с DATA <= @act_date), из него:
+- #first_purch = #hist ⋈ I_ORGANIZATION where ID_SALE_TYPE = 2 (как стр. 66–70);
+- «Новые» (вместо стр. 102–123) — из #first_purch, как в CC-2;
+- #m (вместо стр. 180–191) — из #hist, как в CC-2;
+- #for_cg (вместо стр. 241–265): COUNT_CHECK = COUNT_CHECK_FP, BUDGET = COST_DISCOUNT_FP, а для SHARE_WEEKEND, CARD_SALE,
+  REAL_SALE добавить в #hist sum(DISCOUNT), sum(REAL_DISCOUNT), sum(IIF(DAYTYPE!=1,1.00,0.00)) и count(distinct
+  ID_CONTACT_DATA) (одно DISTINCT) и считать те же выражения по этим суммам.
+Плюс OPTION (RECOMPILE) на операторах с @act_date (как CC-8).
+Экономия: 3–6 мин (три прохода по истории по 1–2 мин + соединения).
+Результат: не меняется (те же суммы по тем же строкам: организации #for_basic_segment — только с ID_SALE_TYPE = 2; П7).
+Риск: низкий.
+
+W-3. CVM_CONTACT_DATA_W:271–331 (#main_shop) — соединение всей истории с размножением строк
+Стр. 280–282: inner join #for_basic_segment только по (ID_CONTACT, ID_COMPANY) — у клиента с двумя организациями каждая
+строка чека удваивается до группировки.
+Как исправить: «and exists (select 1 from #for_basic_segment b where b.ID_CONTACT = a.ID_CONTACT and b.ID_COMPANY = a.ID_COMPANY)»
+вместо inner join; плюс двухступенчатое окно, как CC-3.
+Экономия: 1–4 мин. Результат: не меняется (доли SHARE_CHECK / SHARE_COST от удвоения всех строк клиента не зависят;
+удвоение decimal и float точное). Риск: низкий.
+
+W-4. CVM_CONTACT_DATA_W:573 — вставка ≈ 15 млн строк в кучу 83 ГБ без TABLOCK
+«INSERT INTO I_CVM_CONTACT_DATA_W WITH (TABLOCK)» — минимальное протоколирование в кучу при SIMPLE и параллельная вставка.
+Экономия: 2–4 мин (≈ 9 ГБ журнала). Результат: не меняется. Риск: блокировка таблицы на время вставки (чтение NOLOCK не
+блокируется).
+
+W-5. CVM_CONTACT_DATA_W:31 — max(REFERENCE_DATE) по куче 83 ГБ (137 млн строк) каждую ночь
+Индекса нет — полный скан 83 ГБ ради одной даты; такой же скан в AFFINITIVE_MODEL:356 (шаг 27) и при удалении снимка
+в clear_data_update (шаг 1). 83 ГБ — две трети буферного пула Standard: после скана вытеснены сегменты чеков, нужные
+следующим шагам.
+Как исправить: перевести I_CVM_CONTACT_DATA_W в колоночную, как I_CVM_CONTACT_DATA (373 млн строк — 23,7 ГБ):
+    CREATE CLUSTERED COLUMNSTORE INDEX CCI_I_CVM_CONTACT_DATA_W ON dbo.I_CVM_CONTACT_DATA_W;     -- разово, вне ночи
+Экономия: 1–3 мин в шаге 26 + шаги 27 и 1 + меньше вытеснения кэша. Результат: не меняется.
+Риск: разовая перестройка ~83 ГБ (в Standard — офлайн); DDL на таблице Елены — по согласованию.
+
+W-6. CVM_CONTACT_DATA_W:361–475 — любимые: как CC-5 (два прохода I_CHECK 6 нед., OR в стр. 453–458).
+Экономия: 1–3 мин. Результат: не меняется. Риск: средний (как CC-5).
+
+W-7. CVM_CONTACT_DATA_W:30–39 + clear_data_update — последний недельный снимок пересчитывается каждую ночь — ВОПРОС ЕЛЕНЕ
+Цикл начинается с RN = 2 (стр. 35–39): пересчитывается снимок, удалённый ночью clear_data_update (аудит 07.10, п. 6). Данные
+недели меняются, только пока неделя в окне перезагрузки (10 дней): в ночи, когда неделя снимка уже вне окна (≈ 3 ночи
+из 7), снимок пересчитывается в то же самое.
+Как исправить: удалять и пересчитывать снимок, только если min_date перезалитых загрузок (service.loading_log,
+I_CHECK_DELTA) ≤ дата снимка. Правка — в clear_data_update (шаг 1, контур загрузки MCI); текст — П11.
+Экономия: ≈ 8 мин в среднем за ночь (≈ 3 ночи из 7 × 19 мин). Результат: не меняется; правка в шаге 1 — решение Елены.
+Риск: при ручной перезаливке мимо service.loading_log снимок не обновится.
+
+W-8. CVM_CONTACT_DATA_W:656 — «left join I_GLOBAL_CG as g» без NOLOCK (п. 13) → «left join I_GLOBAL_CG as g (nolock)».
+
+D-1. CVM_CONTACT_DATA (шаг 25, 6 с) — шаг не пустой
+#ym (стр. 26–33) — месяцы, у которых LAST_DAY_IN_MONTH < max(DATA) чеков и > последнего месячного снимка. Пока месяц
+не закрыт, #ym пуст, @act_date = NULL и цикл стр. 41 не выполняется; 6 с — это два max(): по I_CHECKHEADER и по
+I_CVM_CONTACT_DATA (обе колоночные). Снимок за октябрь посчитается, когда max(DATA) ≥ 01.11 (ночь на 02.11); если
+clear_data_update удаляет месячный снимок в дни 1–10, — и в каждую из этих ночей (П4 — длительность шага 25 за 60 дней, П11).
+В такие ночи шаг идёт как итерация _W, и к нему относятся те же правки: W-1 (I_CHECK_RULE стр. 481, 520 — без отсечения),
+W-2, W-3 (стр. 268), W-4 (вставка стр. 550), W-6; NOLOCK — стр. 633 (I_GLOBAL_CG).
+
+==========================================================================================================================
+6. ASSORT_WEEK (шаг 30, 21 мин)
+==========================================================================================================================
+Цикл по неделям от последней в I_ASSORT_WEEK (стр. 27–32); ночью — 1–2 недели, удалённые clear_data_update.
+
+AW-1. assort_week:150–159 — неделя I_CHECK соединяется со всей I_CHECKHEADER
+I_CHECKHEADER b без фильтра даты или недели: полный проход 1,77 млрд строк (ID_CHECK, ID_COMPANY, ID_ORGANIZATION,
+COST_DISCOUNT, SKU) на каждую неделю цикла ради ≈ 6–8 млн заголовков недели.
+Как исправить:
+    declare @chk_min bigint, @chk_max bigint;
+    select @chk_min = min(ID_CHECK), @chk_max = max(ID_CHECK)
+    from I_CHECK with (nolock)                    -- или из #wl (AW-2) без отдельного прохода
+    where WEEKNUMBER = @act_weeknumber and ID_COMPANY = @idc and ID_CONTACT <> 0 and QUANTITY > 0;
+    … inner join I_CHECKHEADER as b with (nolock) on a.ID_CHECK = b.ID_CHECK and a.ID_COMPANY = b.ID_COMPANY
+                                                 and a.ID_ORGANIZATION = b.ID_ORGANIZATION
+      where … and b.ID_CHECK between @chk_min and @chk_max and b.ID_COMPANY = @idc
+Экономия: 3–5 мин на неделю → 3–10 мин за ночь (проход по истории 2–3 мин по калибровке + чтение 5 колонок).
+Результат: не меняется (соединение по ID_CHECK). Отсечение сегментов работает, если ID_CHECK растёт с датой (П10); иначе
+добавить b.WEEKNUMBER = @act_weeknumber — после проверки, что WEEKNUMBER заголовка и строк чека совпадают.
+Риск: низкий.
+
+AW-2. assort_week:61, 151, 242 — неделя I_CHECK читается три раза
+Как исправить: один раз в колоночную временную, три блока — из неё:
+    drop table if exists #wl;
+    select ID_SHOP, ID_ORGANIZATION, ID_PRODUCT, ID_CATEGORY_1, ID_CATEGORY_2, ID_CATEGORY_3, ID_CATEGORY_4, ID_CATEGORY_5,
+           WEEKNUMBER, ID_CHECK, ID_CONTACT, DAYTYPE, DAYOFWEEK, ID_COMPANY,
+           REAL_DISCOUNT, DISCOUNT, COST_DISCOUNT, QUANTITY, CLOCK, [TIME], REAL_PRICE
+    into #wl
+    from I_CHECK with (nolock)
+    where ID_CONTACT <> 0 and WEEKNUMBER = @act_weeknumber and ID_COMPANY = @idc;
+    create clustered columnstore index cci_wl on #wl;
+    -- pre (стр. 38–79), #product_w (стр. 150–159, with QUANTITY > 0), pre (стр. 226–251) — from #wl вместо I_CHECK
+Экономия: 2–4 мин на неделю. Результат: не меняется (те же строки, те же AVG/COUNT над ними). Риск: #wl ≈ 45–55 млн строк.
+
+AW-3. assort_week:389–411 — I_CATEGORY_WEEK_FOR (163 млн) и I_SHOP_WEEK соединяются без явного фильтра недели
+Добавить «b.WEEKNUMBER = @act_weeknumber» и «f.WEEKNUMBER = @act_weeknumber» (в #count_check_product_w только эта неделя) —
+отсечение сегментов I_CATEGORY_WEEK_FOR. Экономия < 1 мин. Результат: не меняется.
+
+AW-4. assort_week:175, 277, 338 — вставки в I_CATEGORY_WEEK_FOR (CCI), I_SHOP_WEEK (куча), I_ASSORT_WEEK (CCI, ≈ 12 млн
+строк в неделю) без TABLOCK
+WITH (TABLOCK) — параллельная вставка и сжатие, минимальное протоколирование кучи. Экономия до 1–2 мин. Результат: не меняется.
+Риск: блокировка таблиц на время вставки (NOLOCK-чтение не блокируется).
+
+AW-5. assort_week:16 (I_ORGANIZATION), 28, 29, 30, 456 (I_CALENDAR), 391 (I_CATEGORY_WEEK_FOR), 405 (I_SHOP_WEEK) — без
+NOLOCK (п. 13).
+
+==========================================================================================================================
+7. CONT_PRICE_SEGMENT (шаг 35, 20 мин)
+==========================================================================================================================
+PS-1. cont_price_segment:26–54, 78–80 — CTE t по I_CONT_ASSORT_W (642 млн строк) вычисляется дважды
+t упомянута в pp и в основном запросе — две группировки 642 млн строк (почти без схлопывания: таблица — одна строка на
+клиент × организация × неделя, см. cont_assort_week). pp нужны только MAX/MIN AVG_PRICE_INDEX по организации;
+AVG_PRICE_INDEX_ALL в выдачу не идёт, стоит лишь в GROUP BY (стр. 78) и постоянен в пределах организации.
+Как исправить:
+    ), pp as (
+        select ID_ORGANIZATION, ID_COMPANY
+             , AVG_PRICE_INDEX_MAX = max(AVG_PRICE_INDEX), AVG_PRICE_INDEX_MIN = min(AVG_PRICE_INDEX)
+        from dbo.I_CONT_ASSORT_W (nolock)
+        where ID_COMPANY = @idc
+        group by ID_ORGANIZATION, ID_COMPANY
+    )
+    …
+    group by ID_CONTACT, t.ID_ORGANIZATION, t.ID_COMPANY, AVG_PRICE_INDEX_MAX, AVG_PRICE_INDEX_MIN   -- без AVG_PRICE_INDEX_ALL
+Экономия: 3–7 мин (одна группировка 642 млн строк → агрегат с проталкиванием в колоночное хранилище).
+Результат: не меняется (max/min по сгруппированным строкам = по исходным). Риск: низкий.
+
+PS-2. cont_price_segment:24, 55 — DELETE всей компании из кучи 15 млн строк и вставка без TABLOCK
+DELETE ≈ 15 млн строк с полным протоколированием, затем INSERT построчно; таблица в это время пустая или полуудалённая
+для читателей с NOLOCK.
+Как исправить: если в таблице только компания 1 (П8) — TRUNCATE TABLE + INSERT … WITH (TABLOCK); лучше — сборка
+в служебную кучу и SWITCH, как CC-6 (нужно для X-1: шаги 21, 26, 37 читают эту таблицу).
+Экономия: 2–5 мин. Результат: не меняется (при одной компании). Риск: TRUNCATE при нескольких компаниях удалил бы чужие
+строки — только после П8; служебная таблица — по согласованию.
+
+PS-3. cont_price_segment:30, 74 — ROW_NUMBER по всей истории ради 8 последних недель
+Окно сортирует 642 млн строк, нужны 8 последних строк клиента. Двухступенчато, как CC-3: сначала WEEKNUMBER >
+max(WEEKNUMBER) − 26 (WEEKNUMBER — сквозной номер недели: cont_assort_week:23 берёт max + 1); клиентам × организациям
+с ≥ 8 строками в окне старшие не нужны; остальным дочитать всю историю полусоединением.
+Экономия: 3–6 мин. Результат: не меняется. Риск: низкий.
+Следующий шаг (по желанию): пересчитывать только клиентов со строками revision_date позже прошлого прогона или с
+LAST_YM ≥ первой перезалитой недели (остальные строки не меняются), MAX/MIN и PRICE_SEGMENT — для всех заново; ещё 3–6 мин.
+
+PS-4. cont_price_segment:14 — I_ORGANIZATION без NOLOCK (п. 13).
+
+==========================================================================================================================
+8. PRODUCT_SCORE_REGION (шаг 23, 6 мин)
+==========================================================================================================================
+Существенных находок нет: один проход заголовков 6 нед. (стр. 69–74), один проход I_CHECK 6 нед. (стр. 86–93), NOLOCK
+везде, временные колоночные, RECOMPILE стоит. Общее окно с cluster_score — CS-1.
+
+==========================================================================================================================
+9. СКВОЗНЫЕ
+==========================================================================================================================
+X-1. Порядок шагов: 21–38 идут строго по одному, хотя часть цепочек независима (по тексту процедур части 1):
+   A: 21 CVM_CONTACT → 23 PRODUCT_SCORE_REGION (читает I_CVM_CONTACT);
+   B: 22 CLIENT_ITEM (I_CHECK, I_MISSION, I_CVM_PRODUCT_CATEGORY, service.loading_log — от 21 не зависит);
+   C: 26 CVM_CONTACT_DATA_W (I_CVM_CONTACT не читает);
+   D: 30 assort_week → 32 cont_assort_week → 35 cont_price_segment;
+   затем 37 clusters (I_CVM_CONTACT, I_CONTACT_PRICE_SEGMENT, I_CVM_CONTACT_DATA_W) → 38 cluster_score.
+   Ограничение: 21, 26 и 37 читают I_CONTACT_PRICE_SEGMENT, которую 35 удаляет и вставляет заново (стр. 24, 55) — параллельно
+   только после PS-2 (сборка + SWITCH), иначе NOLOCK-чтение попадёт на полуудалённую таблицу.
+   Как: шаг-запускатель sp_start_job для цепочек B, C, D (отдельные задания) и шаг ожидания перед 37 (проверка
+   msdb.dbo.sysjobactivity).
+   Экономия по часам: 60–120 мин (критический путь ≈ 21 + 23 ≈ 116 мин вместо 4 ч 35 мин от начала 21 до конца 35); меньше
+   при нехватке ядер и памяти: в Standard batch mode — DOP 2 на запрос, параллельные шаги делят буферный пул ≤ 128 ГБ и tempdb.
+   Нужны П12 (ядра) и зависимости шагов 24, 27–29, 31, 33–34, 36 (часть 2).
+   Результат: не меняется при соблюдении зависимостей. Риск: средний (конкуренция за память → сбросы в tempdb).
+
+X-2. I_CHECK / I_CHECKHEADER после ночной перезагрузки 10 дней: удалённые строки остаются в группах строк колоночного индекса,
+   перезалитые дни ложатся в новые группы; все оконные проходы части 1 (≈ 40 за ночь) читают и удалённые строки. П5 — доля
+   deleted_rows и мелких групп; при доле удалённых > 10 % — ALTER INDEX … REORGANIZE (онлайн и в Standard) вне ночи.
+   Экономия неизвестна до П5.
+
+X-3. Повторные чтения одного окна разными шагами: I_CHECKHEADER по всей истории — 5 проходов в шаге 21 и 4–5 в шаге 26
+   (на дату недели); I_CHECK за 6 нед. — шаг 21 (×2), 23, 26 (×2), 38. Внутри шагов — правки выше; между шагами — CS-1 или
+   расширение I_CLIENT_ITEM_DAY (число строк чека, заполненная ID_CATEGORY_CVM — сейчас NULL, load стр. 181), чтобы 6-недельные
+   расчёты читали её секции вместо I_CHECK. Новые таблицы и колонки — по согласованию.
+
+X-4. Первая пятница месяца (перезагрузка ≈ 3 мес., аудит 07.10): всё, что пересобирается по перезалитым дням и неделям (22 —
+   ~90 дней, 30/32 — ~13 недель, 26 и 25 — снимки), растягивается кратно. CI-1 снимает это для шага 22; для 30/32 недели
+   удаляются заранее в clear_data_update. П4 — длительности этих ночей.
+
+X-5. Условный: I_PROMO_DELIVERY_REPORT (5,35 млрд) читается за 6 нед. в CVM_CONTACT:758 и за 13 нед. в clusters:711 (×2
+   организации). Если сегменты не отсекаются по SEND_DT (П6, «segment skipped»), это 3 полных прохода за ночь по 3–6 мин;
+   исправление — перестройка CCI таблицы в порядке SEND_DT (таблицу наполняет communication_processing, шаг 17) — только
+   рекомендацией MCI.
+
+X-6. Проверено и не найдено: UPDATE куч (forwarded records) в процедурах части 1 нет; курсоров и циклов по клиентам нет
+   (циклы — по дням, неделям, окнам: 1–13 итераций); несаргабельных условий на больших таблицах нет (даты сравниваются
+   с переменными, CAST — в GROUP BY, а не в WHERE).
+
+==========================================================================================================================
+10. ТОП-5 ПО ВЫИГРЫШУ (без изменения результата)
+==========================================================================================================================
+1) CVM_CONTACT: CC-1 (убрать #for_cg) + CC-2…CC-8 — 30–60 мин; из них CC-1 — 15–40 мин.
+2) CLIENT_ITEM: CI-1 (не переписывать неизменившиеся дни) — 35–50 мин при 7–8 неизменных днях из 10 (сначала П9);
+   CI-4 — ещё до 20 мин (П3).
+3) CLUSTERS: CL-1 + CL-2 + CL-4 (+ CL-3, CL-7, CL-8) — 20–45 мин (CL-4 — если П6 покажет перемешанные по организации сегменты).
+4) Параллельные цепочки шагов (X-1) — 60–120 мин по часам (после П12, PS-2 и разбора части 2).
+5) CVM_CONTACT_DATA_W (W-1…W-6), cont_price_segment (PS-1…PS-3), assort_week (AW-1…AW-4) — по 8–15 мин каждая,
+   вместе 25–45 мин.
+С решением Елены: CL-6 (окно кластеров раз в неделю) — ≈ 100–125 мин в 6 ночей из 7; W-7 (снимок недели вне окна
+перезагрузки не пересчитывать) — ≈ 8 мин в среднем; CS-1 (общий слой 6 нед.; float в последних знаках) — 3–6 мин.
+
+==========================================================================================================================
+11. ЧТО ПРОВЕРИТЬ ЗАПРОСОМ (метаданные, журналы, COUNT/TOP по ключу окна; I_CHECK / I_CHECKHEADER / I_CHECK_MISSION целиком
+    не читаются; запускать вне ночного окна)
+==========================================================================================================================
+П1. Фактическое время и сбросы каждого оператора процедур части 1 (кэш планов; номер строки ±1 к файлам audit\procs):
+    SELECT proc_name = OBJECT_NAME(st.objectid, st.dbid)
+         , line_no   = LEN(LEFT(st.text, qs.statement_start_offset / 2))
+                       - LEN(REPLACE(LEFT(st.text, qs.statement_start_offset / 2), CHAR(10), '')) + 1
+         , stmt      = LEFT(SUBSTRING(st.text, qs.statement_start_offset / 2 + 1, 4000), 150)
+         , qs.execution_count
+         , last_sec  = qs.last_elapsed_time / 1000000
+         , avg_sec   = qs.total_elapsed_time / 1000000 / NULLIF(qs.execution_count, 0)
+         , last_cpu_sec = qs.last_worker_time / 1000000
+         , qs.last_rows, last_grant_mb = qs.last_grant_kb / 1024, last_used_mb = qs.last_used_grant_kb / 1024
+         , qs.last_spills, qs.last_dop, qs.creation_time, qs.last_execution_time
+    FROM sys.dm_exec_query_stats AS qs
+    CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
+    WHERE st.dbid = DB_ID(N'mci_model')
+      AND OBJECT_NAME(st.objectid, st.dbid) IN (N'CVM_CONTACT', N'CVM_CONTACT_DATA_W', N'CVM_CONTACT_DATA', N'client_item_load',
+          N'client_item_keys_day', N'client_item_stats', N'clusters', N'cluster_assign', N'cluster_assign_calc',
+          N'cluster_score', N'assort_week', N'cont_price_segment', N'product_score_region')
+    ORDER BY proc_name, qs.last_elapsed_time DESC;
+    -- и включён ли Query Store (история по ночам):
+    SELECT actual_state_desc, max_storage_size_mb FROM sys.database_query_store_options;
+
+П2. Пошаговое время clusters и присвоения за 2 ночи (журналы витрины):
+    SELECT ID, ID_ORGANIZATION, REFERENCE_DATE, W_TYPE, STEP, STARTED, FINISHED
+         , SEC = DATEDIFF(second, STARTED, FINISHED)
+         , GAP_BEFORE_SEC = DATEDIFF(second, LAG(FINISHED) OVER (ORDER BY ID), STARTED)   -- в разрывах — удаления окон
+         , ROWS_, STATUS, MSG
+    FROM dbo.I_FOR_CLUSTER_LOG WITH (NOLOCK)
+    WHERE STARTED >= DATEADD(day, -2, CAST(GETDATE() AS date))
+    ORDER BY ID;
+    SELECT * FROM dbo.I_CLUSTER_ASSIGN_LOG WITH (NOLOCK) WHERE STARTED >= DATEADD(day, -2, CAST(GETDATE() AS date)) ORDER BY ID;
+
+П3. Журнал витрины покупок: дни за ночь и время пересчёта статистик:
+    SELECT TOP (40) ID, MODE, STARTED, FINISHED, MIN_ = DATEDIFF(minute, STARTED, FINISHED), DATE_FROM, DATE_TO,
+           DAYS_DONE, ROWS_, KEY_ROWS, STATUS, ERR = LEFT(ERROR_MSG, 200)
+    FROM dbo.CVM_CLIENT_ITEM_LOG WITH (NOLOCK)
+    ORDER BY ID DESC;
+
+П4. Длительности шагов части 1 за 60 ночей (видны первые пятницы и ночи месячного снимка):
+    SELECT h.step_id, h.step_name, run_date = CONVERT(date, CONVERT(char(8), h.run_date)),
+           dur_min = (h.run_duration / 10000) * 60 + (h.run_duration / 100 % 100) + (h.run_duration % 100) / 60.0
+    FROM msdb.dbo.sysjobhistory AS h WITH (NOLOCK)
+    JOIN msdb.dbo.sysjobs AS j WITH (NOLOCK) ON j.job_id = h.job_id
+    WHERE j.name = N'MCI Regular update' AND h.step_id IN (1, 21, 22, 23, 25, 26, 30, 32, 35, 37, 38)
+      AND h.run_date >= CONVERT(int, CONVERT(char(8), DATEADD(day, -60, GETDATE()), 112))
+    ORDER BY h.step_id, h.run_date;
+
+П5. Состояние колоночных индексов (удалённые строки, мелкие группы):
+    SELECT t = OBJECT_NAME(s.object_id), s.state_desc, s.trim_reason_desc,
+           rowgroups = COUNT(*), total_rows = SUM(CAST(s.total_rows AS bigint)), deleted_rows = SUM(CAST(s.deleted_rows AS bigint)),
+           small_rg = SUM(CASE WHEN s.total_rows < 500000 THEN 1 ELSE 0 END)
+    FROM sys.dm_db_column_store_row_group_physical_stats AS s
+    WHERE s.object_id IN (OBJECT_ID(N'dbo.I_CHECK'), OBJECT_ID(N'dbo.I_CHECKHEADER'), OBJECT_ID(N'dbo.I_CHECK_RULE'),
+                          OBJECT_ID(N'dbo.I_PROMO_DELIVERY_REPORT'), OBJECT_ID(N'dbo.I_FOR_CLUSTER_CATEGORY'),
+                          OBJECT_ID(N'dbo.I_FOR_CLUSTER_MISSION'), OBJECT_ID(N'dbo.I_FOR_CLUSTER_MAIN'),
+                          OBJECT_ID(N'dbo.I_CONT_ASSORT_W'), OBJECT_ID(N'dbo.I_ASSORT_WEEK'))
+    GROUP BY s.object_id, s.state_desc, s.trim_reason_desc
+    ORDER BY t, s.state_desc;
+
+П6. Сегменты по организации однородны? (CL-4) и отсекаются ли по дате (X-5, AW-1):
+    SELECT t = OBJECT_NAME(p.object_id), col = c.name, segments = COUNT(*),
+           one_value = SUM(CASE WHEN s.min_data_id = s.max_data_id THEN 1 ELSE 0 END)
+    FROM sys.column_store_segments AS s
+    JOIN sys.partitions AS p ON p.hobt_id = s.hobt_id
+    JOIN sys.index_columns AS ic ON ic.object_id = p.object_id AND ic.index_id = p.index_id AND ic.index_column_id = s.column_id
+    JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+    WHERE p.object_id IN (OBJECT_ID(N'dbo.I_CHECK'), OBJECT_ID(N'dbo.I_CHECKHEADER')) AND c.name = N'ID_ORGANIZATION'
+    GROUP BY p.object_id, c.name;
+    -- отсечение по дате: COUNT за один день, в сообщениях — «segment reads … segment skipped …»
+    SET STATISTICS IO ON;
+    DECLARE @d date = DATEADD(day, -3, CAST(GETDATE() AS date));
+    SELECT COUNT_BIG(*) FROM dbo.I_CHECKHEADER WITH (NOLOCK) WHERE ID_COMPANY = 1 AND DATA = @d;
+    SELECT COUNT_BIG(*) FROM dbo.I_PROMO_DELIVERY_REPORT WITH (NOLOCK)
+    WHERE ID_COMPANY = 1 AND SEND_DT >= CAST(@d AS datetime) AND SEND_DT < DATEADD(day, 1, CAST(@d AS datetime));
+    SET STATISTICS IO OFF;
+
+П7. Ключи для CC-1 / CC-2 / W-2: уникальность I_CONTACT и состав I_ORGANIZATION:
+    SELECT i.name, i.type_desc, i.is_unique, i.is_primary_key,
+           cols = STRING_AGG(c.name, N', ') WITHIN GROUP (ORDER BY ic.key_ordinal)
+    FROM sys.indexes AS i
+    JOIN sys.index_columns AS ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.key_ordinal > 0
+    JOIN sys.columns AS c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+    WHERE i.object_id = OBJECT_ID(N'dbo.I_CONTACT')
+    GROUP BY i.name, i.type_desc, i.is_unique, i.is_primary_key;
+    SELECT * FROM dbo.I_ORGANIZATION WITH (NOLOCK);                 -- 3 строки: ID_ORGANIZATION не должен повторяться
+    -- если индекс I_CONTACT не уникален по (ID_COMPANY, ID_CONTACT):
+    SELECT TOP (5) ID_COMPANY, ID_CONTACT, n = COUNT(*) FROM dbo.I_CONTACT WITH (NOLOCK)
+    GROUP BY ID_COMPANY, ID_CONTACT HAVING COUNT(*) > 1;
+
+П8. Компании в I_CONTACT_PRICE_SEGMENT (PS-2):
+    SELECT ID_COMPANY, n = COUNT_BIG(*) FROM dbo.I_CONTACT_PRICE_SEGMENT WITH (NOLOCK) GROUP BY ID_COMPANY;
+    SELECT DISTINCT ID_COMPANY FROM dbo.I_ORGANIZATION WITH (NOLOCK);
+
+П9. Меняются ли перезалитые дни (CI-1): выполнить сегодня и завтра после шага 22, сравнить дни, попавшие в оба окна
+    (наша витрина, секции ~6 млн строк; не во время загрузки — замок CVM_CLIENT_ITEM):
+    SELECT DATA, n = COUNT_BIG(*), s = SUM(SUMMA), q = SUM(QTY),
+           ck = CHECKSUM_AGG(BINARY_CHECKSUM(ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, QTY))
+    FROM dbo.I_CLIENT_ITEM_DAY WITH (NOLOCK)
+    WHERE DATA BETWEEN DATEADD(day, -12, CAST(GETDATE() AS date)) AND DATEADD(day, -1, CAST(GETDATE() AS date))
+    GROUP BY DATA ORDER BY DATA;
+
+П10. Растёт ли ID_CHECK с датой (W-1, AW-1, отсечение I_CHECK_RULE в CVM_CONTACT и clusters):
+    SELECT DATA, mn = MIN(ID_CHECK), mx = MAX(ID_CHECK), n = COUNT_BIG(*)
+    FROM dbo.I_CHECKHEADER WITH (NOLOCK)
+    WHERE ID_COMPANY = 1 AND DATA BETWEEN DATEADD(day, -14, CAST(GETDATE() AS date)) AND DATEADD(day, -1, CAST(GETDATE() AS date))
+    GROUP BY DATA ORDER BY DATA;
+
+П11. Что удаляет шаг 1 (W-7, D-1, AW):
+    SELECT OBJECT_DEFINITION(OBJECT_ID(N'dbo.clear_data_update'));
+
+П12. Ядра и память (X-1):
+    SELECT cpu_count, hyperthread_ratio, scheduler_count, physical_memory_gb = physical_memory_kb / 1048576, sql_memory_model_desc
+    FROM sys.dm_os_sys_info;
+
+П13. Кучи: плотность страниц и перенаправленные записи (W-5, CC-6, PS-2; SAMPLED читает ~1 % страниц):
+    SELECT t = OBJECT_NAME(ps.object_id), ps.page_count, ps.avg_page_space_used_in_percent, ps.forwarded_record_count, ps.record_count
+    FROM sys.dm_db_index_physical_stats(DB_ID(N'mci_model'), OBJECT_ID(N'dbo.I_CVM_CONTACT_DATA_W'), 0, NULL, 'SAMPLED') AS ps;
+    -- то же для dbo.I_CVM_CONTACT и dbo.I_CONTACT_PRICE_SEGMENT
+
+П14. Статистики витрины ключей (CI-4):
+    SELECT s.name, s.auto_created, s.is_incremental, s.no_recompute, sp.last_updated, sp.rows, sp.rows_sampled, sp.modification_counter
+    FROM sys.stats AS s
+    CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) AS sp
+    WHERE s.object_id = OBJECT_ID(N'dbo.I_CLIENT_ITEM_KEY_DAY');
+
+П15. Объём выборов любимых за 6 нед. (CC-5, W-6):
+    SELECT n = COUNT_BIG(*), contacts = COUNT(DISTINCT ID_CONTACT) FROM dbo.fav_CATEGORY WITH (NOLOCK)
+    WHERE DATA >= DATEADD(week, -6, CAST(GETDATE() AS date));
+    SELECT n = COUNT_BIG(*), contacts = COUNT(DISTINCT ID_CONTACT) FROM dbo.fav_product WITH (NOLOCK)
+    WHERE DATA >= DATEADD(week, -6, CAST(GETDATE() AS date));
+
+==========================================================================================================================
+12. ЧТЕНИЯ БЕЗ NOLOCK (п. 13 чек-листа) — сводка
+==========================================================================================================================
+CVM_CONTACT_DATA_W:656 (I_GLOBAL_CG); CVM_CONTACT_DATA:633 (I_GLOBAL_CG); clusters:163 (I_LOYALTY_PROMO), 214, 216, 235, 244
+(I_FOR_CLUSTER_LOG); assort_week:16 (I_ORGANIZATION), 28, 29, 30, 456 (I_CALENDAR), 391 (I_CATEGORY_WEEK_FOR), 405 (I_SHOP_WEEK);
+cont_price_segment:14 (I_ORGANIZATION). CVM_CONTACT, client_item_*, cluster_assign(_calc), cluster_score, product_score_region —
+без замечаний (DELETE-цели clusters:794, 797, cluster_assign:403, cont_price_segment:24 — исключение по п. 13).
+
+==========================================================================================================================
+13. СВЕРКА С АУДИТОМ 07.10 (old_audit_0710_perf.txt) — только процедуры части 1
+==========================================================================================================================
+- п. 5 (CVM_CONTACT: 11 чтений I_CHECKHEADER, стр. 42, 332, 489 — по всей истории) — актуален. Сейчас 15 обращений, по всей
+  истории — 5 (стр. 42, 98, 332, 403, 448). Сделано после 07.10: ПП и CVM — один проход с отсечением I_CHECK_RULE по диапазону
+  ID_CHECK (стр. 694–733); TRUNCATE перенесён к вставке (стр. 780–782). Остальное — CC-1…CC-4.
+- п. 6 (CVM_CONTACT_DATA/_W: полный проход на каждую дату снимка; clear_data_update каждую ночь удаляет последний недельный
+  снимок) — актуален: теперь шаг 26 (был 23), 18–19 мин каждую ночь. В _W и CVM_CONTACT_DATA не перенесено исправление
+  I_CHECK_RULE из CVM_CONTACT (W-1). Правки — W-1…W-7, D-1.
+- Раздел 4, «I_CVM_CONTACT пустая 08:22–10:01» — исправлен частично: пустая только на время INSERT (стр. 781–784); CC-6
+  убирает и это.
+- Раздел 3, п. 6 (перезагрузка 10 дней I_CHECK/I_CHECKHEADER — главный множитель) — актуален для части 1: CI-1, AW, W-7, X-2, X-4.
+- п. 1–4, 7–14 и остальное расписание (check_product_update, communication_processing, CVM_EFFECT_TODAY, NEW_FOR_GLOBAL_CG,
+  trends, check_insert, CVM_API_nightly, PP_integration) — процедуры вне части 1, здесь не перепроверялись.
