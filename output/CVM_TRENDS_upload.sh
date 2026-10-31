@@ -9,7 +9,7 @@
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 NAME="$1"
-case "$NAME" in CVM_TRENDS_FIX_20261031.sql|CVM_TRENDS_HISTORY_20261031.sql) ;; *) echo "неизвестный файл: $NAME"; exit 1;; esac
+case "$NAME" in CVM_TRENDS_FIX_20261031.sql|CVM_TRENDS_HISTORY_20261031.sql|CVM_TRENDS_MONTHLY_20261031.sql) ;; *) echo "неизвестный файл: $NAME"; exit 1;; esac
 SQL="$DIR/$NAME"
 EXPECTED_KEY='SHA256:vv6HrusUM0LeV8Q+4PKVQHs97+/EbgJ7vOO5clUSetk'
 run() { ssh kz "ssh ru \"docker exec -i cvm-api sh -c '$1'\""; }
@@ -38,7 +38,7 @@ sha, name = sys.argv[1], sys.argv[2]
 m = json.load(open('/tmp/trd_up/manifest.json', encoding='utf-8-sig'))   # манифест может быть с BOM
 m['scripts'] = [s for s in m['scripts'] if s['name'] != name] + [{'name': name, 'sha256': sha}]
 m['publishedAt'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-m['publishedBy'] = 'Елена (скрипт Claude): тренды — исправление dbo.trends и пересчёт истории, 31.10.2026'
+m['publishedBy'] = 'Елена (скрипт Claude): тренды — исправление dbo.trends, расчёт раз в месяц, пересчёт истории, 31.10.2026'
 json.dump(m, open('/tmp/trd_up/manifest.new.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
 PY
 printf 'put %s %s\nput manifest.new.json manifest.json\nget manifest.json /tmp/trd_up/check.json\n' "\$NAME" "\$NAME" > b2.txt

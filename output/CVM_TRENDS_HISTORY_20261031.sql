@@ -132,19 +132,29 @@ BEGIN
                 SET @note = N'остановлено: не вечер (порции считаются с 17:00 до 00:30)';
                 BREAK;
             END
-            -- ночной джоб MCI или разовый догон идёт — порцию не начинаем (шаг 54 и CVM REBUILD ONCE пишут те же таблицы;
-            -- задания MCI Reload шагом 3 запускают MCI Regular update)
-            IF EXISTS (SELECT 1
-                       FROM msdb.dbo.sysjobactivity AS a (nolock)
-                            JOIN msdb.dbo.sysjobs AS j (nolock) ON j.job_id = a.job_id
-                       WHERE j.name IN (N'MCI Regular update', N'MCI Reload every day', N'MCI Reload one time', N'MCI Reload',
-                                        N'CVM REBUILD ONCE')
-                         AND a.start_execution_date IS NOT NULL AND a.stop_execution_date IS NULL
-                         AND a.session_id = (SELECT max(session_id) FROM msdb.dbo.syssessions (nolock)))
+            -- ночной джоб MCI или разовый догон идёт — ждём его конца, проверка раз в 5 минут (шаг 54 и CVM REBUILD ONCE
+            -- пишут те же таблицы; задания MCI Reload шагом 3 запускают MCI Regular update). Задание запускается один раз
+            -- в день в 17:00 и ждёт здесь, а не перезапускается по расписанию. Не дождались, пока порция ещё успевает
+            -- до 00:30, — проход заканчивается до завтра
+            WHILE EXISTS (SELECT 1
+                          FROM msdb.dbo.sysjobactivity AS a (nolock)
+                               JOIN msdb.dbo.sysjobs AS j (nolock) ON j.job_id = a.job_id
+                          WHERE j.name IN (N'MCI Regular update', N'MCI Reload every day', N'MCI Reload one time', N'MCI Reload',
+                                           N'CVM REBUILD ONCE')
+                            AND a.start_execution_date IS NOT NULL AND a.stop_execution_date IS NULL
+                            AND a.session_id = (SELECT max(session_id) FROM msdb.dbo.syssessions (nolock)))
             BEGIN
-                SET @note = N'остановлено: идёт ночной джоб MCI или CVM REBUILD ONCE';
-                BREAK;
+                IF datediff(minute, sysdatetime(), @deadline) < @prep + 30 + @mon
+                BEGIN
+                    SET @note = N'остановлено: ночной джоб MCI не закончился, порция не успеет до 00:30';
+                    BREAK;
+                END
+                UPDATE dbo.CVM_TRENDS_REBUILD
+                SET UPDATED = sysdatetime(), LAST_NOTE = N'ждёт конца ночного джоба MCI (проверка раз в 5 минут)';
+                WAITFOR DELAY '00:05:00';
             END
+            IF @note IS NOT NULL BREAK;
+            SET @now = sysdatetime();
 
             -- сколько месяцев успеет до 00:30 с запасом 30 мин на ошибку оценки (идущую порцию не прервать, а в 01:00 —
             -- перезагрузка MCI): (осталось − подготовка − 30) / месяц; не больше MAX_CHUNK и оставшихся месяцев
