@@ -121,8 +121,15 @@
   - понедельничные цифры совпадают с ежедневным расчётом той же даты.
   Экономия: ≈ −3:12…−3:31 в обычный день.
 
-Т10. Шлюз портала по шагам — «Срезы базы», «Сделать список», «живой ассортимент» днём        статус: в работе 31.10 — код готов, ждёт ок Елены на выкладку
-  Ход 31.10–01.11: код — kz /srv/projects/cvm_portal-gate (ветка gate-steps-1031 от ru/main d5c55db, не закоммичено):
+Т10. Шлюз портала по шагам — «Срезы базы», «Сделать список», «живой ассортимент» днём        статус: выложено 01.11 — ждёт прогона
+  Выкладка 01.11 ≈ 02:50 МСК («выкладывай»): коммит 002b8c5 в ru/main (ветка gate-steps-1031, рабочее дерево kz
+  /srv/projects/cvm_portal-gate); хук портала cvm-api НЕ пересобирает (профиль api) — пересобран отдельно:
+  docker compose -f docker-compose.prod.yml --env-file /srv/cvm_portal/.env --profile api up -d --build --no-deps cvm-api
+  (журнал /srv/cvm_portal/cvm-api-rebuild-gate-steps.log). В контейнере GATE_WRITERS есть, job_gate на живом msdb — ok.
+  Откат без выкладки: CONTACT_BI_GATE_STEPS=0 в /srv/cvm_portal/api.env и пересоздать cvm-api.
+  Осталось для «готово»: прогон 01.11 (вс) и 03.11 (вт, после Т9) — во сколько собрался снимок срезов
+  (api-data/contact_bi/status.json, «Снимок на … собран») против ожидания ниже; в журнале cvm-api нет ошибок шлюза.
+  Ход 31.10–01.11: код — kz /srv/projects/cvm_portal-gate (ветка gate-steps-1031 от ru/main d5c55db):
   contact_bi.job_gate(conn, job, writers) — открыто, если задание простаивает или в идущем прогоне (sp_help_jobactivity →
   sp_help_jobhistory с его старта) успешно прошли все шаги с именами из contact_bi.GATE_WRITERS (номера — по
   sp_help_jobstep: два шага с одним именем — нужны оба; писателя нет в задании — закрыто до конца прохода); вызовы msdb —
@@ -134,8 +141,6 @@
   dixy/bonus_ready без requires); живая проверка учёткой cvm-api на msdb — ok. Ожидание по длительностям 31.10: срезы через
   ≈ 2:20 после старта CVM_CONTACT, список ≈ 3:05 (обычный день ≈ 11:50 и ≈ 12:35; будни после Т9 ≈ 11:30 и ≈ 11:55),
   живой ассортимент — за ≈ 15 мин до конца задания. Экран не меняется — показывать на 5173 нечего.
-  Дальше: ок Елены → коммит в ветке → проверить соседей по kz → git push ru gate-steps-1031:main → tester после деплоя;
-  прогон 03.11 (вт) — время открытия по журналу снимка срезов (api-data/contact_bi/status.json) против ленты; тогда «готово».
   Что:
   - Портал (общее дерево kz /srv/projects/cvm_portal): api/app/contact_bi.py (job_gate), contact_lists.py (GateClosed),
     live_assort.py, комментарий в api/sql/contact_bi/list_candidates.sql.
