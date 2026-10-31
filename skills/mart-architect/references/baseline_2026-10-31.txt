@@ -6,6 +6,20 @@ Regular update 05:32:15–18:37:03 (13:04:48). 29.10: 05:20–18:46 (13:25:50). 
 Порядок: каждый шаг при успехе → следующий; «ош. →58» — при ошибке письмо об ошибке и выход; «ош. дальше» — следующий шаг.
 Шаг 52 CVM_EFFECT_TODAY с @stop_at='18:00': после 18:00 новые порции акций не начинаются. 30.10 выбрано 60 акций,
 пересчитано 46 (I_CVM_EFFECT, «Дата расчета» 17:44–18:00:25) — 14 остались без пересчёта.
+31.10: Reload 01:00–04:43, Regular update 04:43–17:48; эффект 16:50–17:43, пересчитано 82 акции.
+
+С 31.10.2026 18:50 ШАГИ 18–56 — В ПОРЯДКЕ А1 (бэклог Т8, output/CVM_JOB_ORDER_A1_20261031.sql; 1–17, 57, 58 — те же).
+Номер — имя (в скобках — номер до 31.10, по нему строки таблицы ниже); «ош. дальше» переехал вместе с шагом:
+18 fav_cat_prod_load (18) · 19 fav_cat_prod_ins (19) · 20 UPDATE_TYPE_PROMO (20) · 21 CVM_CONTACT (21) ·
+22 DELIVERY_REPORT (46) · 23 GCG_REPORT (24) · 24 CVM_CONTACT_DATA (25) · 25 CVM_CONTACT_DATA_W (26) · 26 AFFINITIVE_MODEL (27) ·
+27 I_ASSORT_WEEK (30) · 28 I_cont_assort_w (32) · 29 I_CONTACT_PRICE_SEGMENT (35) · 30 GLOBAL_CG (36) · 31 CLUSTERS (37) ·
+32 PP treatment (39) · 33 PROMO_CAMPAIGN_LINK (47) · 34 DISCOUNT_MART (48) · 35 DISC_MODEL_MART (49) · 36 DISC_EFFECT (50) ·
+37 BONUS_MART (51) · 38 CVM_EFFECT_TODAY (52) · 39 CLUSTER_SCORE (38) · 40 PP_EFFECT_MONTH (40) · 41 PRODUCT_SCORE_REGION (23) ·
+42 CVM_BASE_MONTH (44) · 43 CLIENT_ITEM (22) · 44 CVM_LIVE_ASSORT (31) · 45 assort_month (33) · 46 cont_assort_m (34) ·
+47 Shop time (28) · 48 for_i_segment (29) · 49 I_CH_INDEXEX (41) · 50 LFL_contacts_shops (42) · 51 I_REPORT (43) ·
+52 PRODUCT_DEMAND (45) · 53 cohort_new · 54 I_TRENDS · 55 Mission report · 56 churn_report.
+Ожидание по длительностям 30–31.10: DELIVERY ≈ 10:40–11:30, ценовой сегмент ≈ 11:45–12:40, старт эффекта ≈ 14:45–15:30,
+CLIENT_ITEM ≈ 17:20–17:50, конец ≈ 17:30–18:20. История SQL Agent хранит шаги по номеру — сравнивать прогоны по имени шага.
 
 Сервер: SQL Server 2019 Standard CU15 (15.0.4198.2); MAXDOP 4; cost threshold 150; max server memory 192 512 МБ;
 tempdb 12 файлов данных (1,45 ТБ) + 2 журнала; mci_model — SIMPLE, совместимость 150, RCSI выкл., snapshot isolation вкл.
