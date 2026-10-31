@@ -57,6 +57,10 @@ BEGIN
     RETURN;
 END
 
+-- шагов 58, с шагом фрода из чёрных списков FRAUD_LISTS (CVM_FRAUD_LISTS_20261031) — 59
+DECLARE @steps int = 58 + CASE WHEN EXISTS (SELECT 1 FROM msdb.dbo.sysjobsteps (nolock)
+                                            WHERE job_id = @job_id AND step_name = N'FRAUD_LISTS') THEN 1 ELSE 0 END;
+
 -- 1. задание и загрузка MCI не идут
 IF EXISTS (SELECT 1
            FROM msdb.dbo.sysjobactivity AS a (nolock)
@@ -128,13 +132,13 @@ WHERE s.job_id = @job_id;
 UPDATE t SET STEP_ID = c.step_id, CMD = c.command
 FROM #t9 AS t JOIN #cur AS c (nolock) ON c.step_name = t.NAME;
 
-IF (SELECT count(*) FROM #cur (nolock)) <> 58
-   OR (SELECT count(DISTINCT step_name) FROM #cur (nolock)) <> 58
+IF (SELECT count(*) FROM #cur (nolock)) <> @steps
+   OR (SELECT count(DISTINCT step_name) FROM #cur (nolock)) <> @steps
    OR EXISTS (SELECT 1 FROM #t9 (nolock) WHERE STEP_ID IS NULL)
    OR EXISTS (SELECT 1 FROM #t9 AS t (nolock) JOIN #cur AS c (nolock) ON c.step_id = t.STEP_ID
               WHERE c.subsystem <> N'TSQL' OR c.database_name <> N'mci_model' OR c.on_success_action <> 3)
 BEGIN
-    RAISERROR(N'СТОП: в задании не 58 шагов, нет одного из шести шагов задачи или шаг не T-SQL в mci_model с переходом «при успехе — следующий» — задание не изменено.', 16, 1);
+    RAISERROR(N'СТОП: в задании не 58 шагов (59 с FRAUD_LISTS), нет одного из шести шагов задачи или шаг не T-SQL в mci_model с переходом «при успехе — следующий» — задание не изменено.', 16, 1);
     RETURN;
 END
 
@@ -261,7 +265,7 @@ BEGIN TRY
                , os_run_priority, output_file_name, flags, proxy_id
                , command = CASE WHEN step_name IN (SELECT NAME FROM #t9 (nolock)) THEN NULL ELSE command END
           FROM #new (nolock)) AS d;
-    IF @bad > 0 OR (SELECT count(*) FROM #new (nolock)) <> 58
+    IF @bad > 0 OR (SELECT count(*) FROM #new (nolock)) <> @steps
     BEGIN
         SET @msg = concat(N'steps differ: ', left(isnull(@diff, N'(count)'), 1500), N' — после правки изменились другие настройки или другие шаги, откат, задание не изменено.');
         THROW 50004, @msg, 1;
