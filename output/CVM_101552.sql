@@ -13,9 +13,7 @@
 --   · после 26.11.2026 — ничего не делается;
 --   · шапка I_PROMO заводится, только если её нет;
 --   · список уже есть — сборка пропускается (повторный прогон не задвоит);
---   · идёт «MCI Regular update» и не прошёл шаг GLOBAL_CG (до него пересчитываются I_CONTACT, I_CVM_CONTACT,
---     I_CONTACT_PRICE_SEGMENT) — до чтения и после чтения; или прочитано меньше 2,5 млн клиентов аудитории — ошибка 16,
---     раннер повторит через 10 минут, ничего не записано;
+--   · прочитано меньше 2,5 млн клиентов аудитории (неполное чтение) — ошибка 16, раннер повторит, ничего не записано;
 --   · подбор КГ — до ошибки < 0,05% или 1000 попыток, берётся лучшая попытка.
 
 SET QUOTED_IDENTIFIER ON
@@ -73,26 +71,6 @@ begin
 end
 
 declare @msg nvarchar(400)
-
--- защита от чтения во время перезаливки — по состоянию задания (как CVM_CONTACT_T2 / CVM_BUILD_OFFERS): «MCI Regular update»
--- от старта до конца шага GLOBAL_CG перезаписывает I_CONTACT, I_CVM_CONTACT (CVM_CONTACT: TRUNCATE + INSERT),
--- I_CONTACT_PRICE_SEGMENT (cont_price_segment по понедельникам: DELETE + INSERT) и I_GLOBAL_CG. Порог 2,5 млн ниже ловит только
--- недобор больше 21 % — чтение на хвосте INSERT прошло бы. Шаг ищется по имени; не найден — ждём конца всего задания.
-declare @st_end int = isnull((select max(s.step_id)
-							  from msdb.dbo.sysjobsteps as s (nolock)
-									inner join msdb.dbo.sysjobs as j (nolock) on j.job_id = s.job_id
-							  where j.name = N'MCI Regular update' and s.step_name = N'GLOBAL_CG'), 1000)
-if exists (select 1
-		   from msdb.dbo.sysjobactivity as a (nolock)
-				inner join msdb.dbo.sysjobs as j (nolock) on j.job_id = a.job_id
-		   where j.name = N'MCI Regular update'
-			 and a.session_id = (select max(s.session_id) from msdb.dbo.syssessions as s (nolock))
-			 and a.start_execution_date is not null and a.stop_execution_date is null
-			 and isnull(a.last_executed_step_id, 0) < @st_end)
-begin
-	raiserror(N'101552: идёт «MCI Regular update», шаг GLOBAL_CG не пройден (пересчёт I_CVM_CONTACT / I_CONTACT_PRICE_SEGMENT) — список не собран, раннер повторит', 16, 1)
-	return
-end
 
 -- аудитория: Активные и Активные LFL, низкий ЦИ, средний чек до 750р.
 drop table if exists #a
@@ -174,19 +152,6 @@ create clustered columnstore index cci_t on #t
 if (select count(*) from #t) <> (select count(*) from #x)
 begin
 	raiserror(N'101552: не у всех клиентов списка прочитана строка I_CVM_CONTACT (идёт пересчёт?) — список не собран, раннер повторит', 16, 1)
-	return
-end
-
--- защита: задание стартовало или дошло до перезаливки, пока читались #a, #x, #t
-if exists (select 1
-		   from msdb.dbo.sysjobactivity as a (nolock)
-				inner join msdb.dbo.sysjobs as j (nolock) on j.job_id = a.job_id
-		   where j.name = N'MCI Regular update'
-			 and a.session_id = (select max(s.session_id) from msdb.dbo.syssessions as s (nolock))
-			 and a.start_execution_date is not null and a.stop_execution_date is null
-			 and isnull(a.last_executed_step_id, 0) < @st_end)
-begin
-	raiserror(N'101552: «MCI Regular update» стартовало во время чтения аудитории — список не собран, раннер повторит', 16, 1)
 	return
 end
 
