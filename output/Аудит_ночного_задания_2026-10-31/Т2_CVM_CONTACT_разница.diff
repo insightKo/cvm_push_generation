@@ -1,0 +1,838 @@
+diff --git a/CVM_CONTACT_old.sql b/CVM_CONTACT_new.sql
+index 9a8b225..bfac3c4 100644
+--- a/CVM_CONTACT_old.sql
++++ b/CVM_CONTACT_new.sql
+@@ -25,29 +25,56 @@ BEGIN
+ declare @act_date date = (select max(DATA) from I_CHECKHEADER (nolock) where ID_COMPANY=@idc) 
+ 
+ 
+ --- FOR NEW, ACTIVE, ACTIVE-LFL, RANDOM, CHURN
+ 
+-drop table if exists #first_purch;
++-- Т2 (01.11.2026, ускорение ночного задания; цифры те же): вся история чеков читается один раз — #hist (клиент × организация),
++-- из него #first_purch, «Новые» и канал #m; раньше — три прохода по всей истории
++declare @d6 date = dateadd(day,+1, dateadd(week,-6,@act_date))
++
++drop table if exists #hist;
+ 
++create table #hist (ID_CONTACT int, ID_ORGANIZATION int, ID_COMPANY int, MIN_DATA date, LAST_DATA date, LAST_YM int, FIRST_YM int
++	, COUNT_CHECK_FP int, COST_DISCOUNT_FP decimal(38,2), CD_6W decimal(38,2), MIN_DATA_6W date
++	, index cci_hist clustered columnstore)
++
++insert into #hist with (tablock)
+ select ID_CONTACT
+-	, a.ID_ORGANIZATION
+-	, a.ID_COMPANY
+-	, MIN_DATA = min(a.DATA)
+-	, LAST_DATA= max(DATA)
++	, ID_ORGANIZATION
++	, ID_COMPANY
++	, MIN_DATA = min(DATA)
++	, LAST_DATA = max(DATA)
+ 	, LAST_YM = max(YEAR_MONTH)
+ 	, FIRST_YM = min(YEAR_MONTH)
+ 	, COUNT_CHECK_FP = count(ID_CHECK)
+-	, COST_DISCOUNT_FP=sum(COST_DISCOUNT)
++	, COST_DISCOUNT_FP = sum(COST_DISCOUNT)
++	, CD_6W = sum(iif(DATA >= @d6, COST_DISCOUNT, 0))			-- для #m: сумма чеков за 6 недель
++	, MIN_DATA_6W = min(iif(DATA >= @d6, DATA, null))			-- для #m: первая покупка за 6 недель
++from I_CHECKHEADER (nolock)
++where ID_CONTACT != 0 and ID_COMPANY = @idc
++group by ID_CONTACT
++	, ID_ORGANIZATION
++	, ID_COMPANY
++option (recompile)
++
++drop table if exists #first_purch;
++
++select h.ID_CONTACT
++	, h.ID_ORGANIZATION
++	, h.ID_COMPANY
++	, h.MIN_DATA
++	, h.LAST_DATA
++	, h.LAST_YM
++	, h.FIRST_YM
++	, h.COUNT_CHECK_FP
++	, h.COST_DISCOUNT_FP
+ into #first_purch
+-from	I_CHECKHEADER a (nolock)
++from	#hist h
+ 		inner join I_ORGANIZATION c (nolock)
+-		on a.ID_ORGANIZATION = c.ID_ORGANIZATION
+-where a.ID_CONTACT != 0 and a.ID_COMPANY = @idc
+-group by ID_CONTACT
+-	, a.ID_ORGANIZATION
+-	, a.ID_COMPANY
++		on h.ID_ORGANIZATION = c.ID_ORGANIZATION
++
++create clustered columnstore index cci_first_purch on #first_purch
+ 
+ 
+ ---- 0 -fraud
+ drop table if exists  #for_basic_segment
+ 
+@@ -87,55 +114,73 @@ select *
+ into #0
+ from #for_basic_segment
+ 
+ --1- new
+ 
++-- Т2: первая покупка в организации за 6 недель — прямо из #first_purch (раньше тот же отбор шёл проходом по всей истории)
+ INSERT INTO #for_basic_segment
+-select   a.ID_COMPANY
+-		, a.ID_ORGANIZATION
+-		, a.ID_CONTACT
++select   b.ID_COMPANY
++		, b.ID_ORGANIZATION
++		, b.ID_CONTACT
+ 		, SEGMENT = 1
+ 		, REFERENCE_DATE = @act_date
+-from	I_CHECKHEADER a (nolock)
+-		inner join #first_purch b
+-			on a.ID_CONTACT = b.ID_CONTACT
+-			and a.ID_COMPANY = b.ID_COMPANY
+-			and a.ID_ORGANIZATION = b.ID_ORGANIZATION
+-			and b.MIN_DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+-		left join #0 as g
+-			on a.ID_CONTACT = g.ID_CONTACT	
+-			and a.ID_COMPANY=g.ID_COMPANY
+-			and a.ID_ORGANIZATION=g.ID_ORGANIZATION
+-where a.ID_CONTACT != 0
+-		and g.ID_CONTACT is null	
+-		and a.ID_COMPANY = @idc
+-group by a.ID_CONTACT
+-	, a.ID_ORGANIZATION
+-	, a.ID_COMPANY
++from	#first_purch b
++where	b.MIN_DATA between @d6 and @act_date
++		and not exists (select 1 from #0 as g
++						where g.ID_CONTACT = b.ID_CONTACT
++							and g.ID_COMPANY = b.ID_COMPANY
++							and g.ID_ORGANIZATION = b.ID_ORGANIZATION)
+ 
+ drop table if exists #1
+ select *
+ into #1
+ from #for_basic_segment
+ 
++-- Т2: окна 56 и 52 недели, 6 недель и 6 недель год назад — один проход по чекам в #wk (клиент × организация × неделя,
++-- число чеков в каждом окне); «Случайные», «Отток», «Активные» считаются из него (раньше — шесть проходов по чекам)
++declare @d56 date = dateadd(day,+1, dateadd(week,-56,@act_date))
++	, @d52 date = dateadd(day,+1, dateadd(week,-52,@act_date))
++	, @ly1 date = dateadd( year,-1,dateadd(day,+1, dateadd(week,-6,@act_date)))
++	, @ly2 date = dateadd(year,-1,@act_date)
++declare @dw date = iif(@ly1 < @d56, @ly1, @d56)
++
++drop table if exists #wk;
++
++create table #wk (ID_CONTACT int, ID_ORGANIZATION int, ID_COMPANY int, WEEKNUMBER int
++	, N56 int, N52 int, N6 int, NLY int
++	, index cci_wk clustered columnstore)
++
++insert into #wk with (tablock)
++select ID_CONTACT
++	, ID_ORGANIZATION
++	, ID_COMPANY
++	, WEEKNUMBER
++	, N56 = sum(iif(DATA >= @d56, 1, 0))
++	, N52 = sum(iif(DATA >= @d52, 1, 0))
++	, N6 = sum(iif(DATA >= @d6, 1, 0))
++	, NLY = sum(iif(DATA between @ly1 and @ly2, 1, 0))
++from I_CHECKHEADER (nolock)
++where ID_COMPANY = @idc and DATA between @dw and @act_date
++	and ID_CONTACT != 0		-- ревью Т2: чеки без карты (клиент 0, NULL) в исходнике давали только строки «Отток» клиента 0 / NULL, в таблицу они не проходят (inner join #first_purch)
++group by ID_CONTACT
++	, ID_ORGANIZATION
++	, ID_COMPANY
++	, WEEKNUMBER
++option (recompile)
++
+ -- 4- RANDOM
+ 
+ drop table if exists #weeks
+ 
+ ;with a as
+ (
+ select  ID_CONTACT
+-		, a.ID_ORGANIZATION
++		, ID_ORGANIZATION
+ 		, WEEKNUMBER
+ 		, ID_COMPANY
+-from I_CHECKHEADER a (nolock)
+-where 	a.ID_COMPANY = @idc and DATA between dateadd(day,+1, dateadd(week,-56,@act_date)) and @act_date
+-		and a.ID_CONTACT != 0
+-group by  ID_CONTACT
+-	, a.ID_ORGANIZATION
+-	, WEEKNUMBER
+-	, ID_COMPANY
++from #wk
++where N56 > 0 and ID_CONTACT != 0
+ ), one_purch as
+ (
+ select ID_CONTACT
+ 	 , ID_ORGANIZATION
+ from a
+@@ -160,28 +205,30 @@ select
+ 	a.ID_CONTACT
+ 	, a.ID_ORGANIZATION
+ 	, a.ID_COMPANY
+ 	, AVG_DELTA_WEEK = round(avg(DELTA_WEEK*1.0), 0)
+ into #weeks
+-from with_first_purch a 
++from with_first_purch a
+ where DELTA_WEEK is not null
+ group by a.ID_CONTACT
+ 	, a.ID_ORGANIZATION
+ 	, a.ID_COMPANY
++
++create clustered columnstore index cci_weeks on #weeks
+ 	
+ 
+ drop table if exists #random;
+ ;with c as
+ (
+ select	ID_CONTACT
+ 		, ID_ORGANIZATION
+ 		, ID_COMPANY
+-		, E_SEGMENT = sum(IIF(c.DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date,1,0))
+-from I_CHECKHEADER c (nolock)
+-where   c.DATA between dateadd(day,+1, dateadd(week,-52,@act_date)) and @act_date
+-		and c.ID_CONTACT != 0 and c.ID_COMPANY=@idc
++		, E_SEGMENT = sum(N6)
++from #wk
++where	ID_CONTACT != 0
+ group by ID_CONTACT, ID_ORGANIZATION, ID_COMPANY
++having sum(N52) > 0
+ )
+ INSERT into #for_basic_segment
+ select	 a.ID_COMPANY
+ 		, a.ID_ORGANIZATION
+ 		, a.ID_CONTACT
+@@ -208,41 +255,43 @@ drop table if exists #2
+ select *
+ into #2
+ from #for_basic_segment
+ -- 5- CHURN
+ 
+-;with t as 
++;with t as
+ (
+-select	ID_CONTACT 
+-		, a.ID_ORGANIZATION
+-		, a.ID_COMPANY
+-		
+-from I_CHECKHEADER a (nolock)
+-where	 a.ID_CONTACT != 0 and  a.ID_COMPANY = @idc
+-and DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+-group by ID_CONTACT
+-	, a.ID_ORGANIZATION
+-	, YEAR_MONTH
+-	, a.ID_COMPANY
++select	ID_CONTACT
++		, ID_ORGANIZATION
++		, ID_COMPANY
++from #wk
++where	ID_CONTACT != 0
++group by ID_CONTACT, ID_ORGANIZATION, ID_COMPANY
++having sum(N6) > 0
++), a as (
++select	ID_CONTACT
++		, ID_ORGANIZATION
++		, ID_COMPANY
++from #wk
++group by ID_CONTACT, ID_ORGANIZATION, ID_COMPANY
++having sum(N52) > 0
+ )
+ INSERT INTO #for_basic_segment
+ select   a.ID_COMPANY
+ 		, a.ID_ORGANIZATION
+ 		, a.ID_CONTACT
+ 		, SEGMENT = 5
+ 		, REFERENCE_DATE = @act_date
+-from I_CHECKHEADER  as a (nolock)
+-	left join t 
++from a
++	left join t
+ 		on a.ID_CONTACT = t.ID_CONTACT
+ 		and a.ID_ORGANIZATION = t.ID_ORGANIZATION
+ 		and a.ID_COMPANY=t.ID_COMPANY
+ 	left join #2 as b
+ 		on a.ID_CONTACT = b.ID_CONTACT
+ 		and a.ID_ORGANIZATION = b.ID_ORGANIZATION
+ 		and a.ID_COMPANY=b.ID_COMPANY
+-where	DATA between dateadd(day,+1, dateadd(week,-52,@act_date)) and @act_date
+-		and b.ID_CONTACT is null
++where	b.ID_CONTACT is null
+ 		and t.ID_CONTACT is null
+ 		and a.ID_COMPANY=@idc
+ group by	a.ID_CONTACT
+ 			, a.ID_ORGANIZATION
+ 			, a.ID_COMPANY 
+@@ -256,37 +305,42 @@ from #for_basic_segment
+ 
+ ;with b as
+ (
+ select	ID_CONTACT
+ 		, ID_COMPANY
+-		, ID_ORGANIZATION 
+-from I_CHECKHEADER (nolock) 
+-where	DATA between dateadd( year,-1,dateadd(day,+1, dateadd(week,-6,@act_date))) and dateadd(year,-1,@act_date)
+-		and ID_COMPANY = @idc
++		, ID_ORGANIZATION
++from #wk
+ group by ID_CONTACT
+ 		, ID_COMPANY
+-		, ID_ORGANIZATION 
++		, ID_ORGANIZATION
++having sum(NLY) > 0
++), a as (
++select	ID_CONTACT
++		, ID_ORGANIZATION
++		, ID_COMPANY
++from #wk
++where	ID_CONTACT != 0
++group by ID_CONTACT, ID_ORGANIZATION, ID_COMPANY
++having sum(N6) > 0
+ )
+ INSERT INTO #for_basic_segment
+ select   a.ID_COMPANY
+ 		, a.ID_ORGANIZATION
+ 		, a.ID_CONTACT
+ 		, SEGMENT = IIF(a.ID_ORGANIZATION=3,2, IIF(b.ID_CONTACT is null,2,3))
+ 		, REFERENCE_DATE = @act_date
+-from	I_CHECKHEADER a (nolock)
++from	a
+ 		left join b
+ 		on a.ID_COMPANY=b.ID_COMPANY
+ 		and a.ID_ORGANIZATION=b.ID_ORGANIZATION
+ 		and a.ID_CONTACT=b.ID_CONTACT
+ 		left join #5 as c
+ 			on a.ID_CONTACT = c.ID_CONTACT
+ 			and a.ID_COMPANY = c.ID_COMPANY
+ 			and a.ID_ORGANIZATION=c.ID_ORGANIZATION
+ where c.ID_CONTACT is null 	and 
+ 		a.ID_COMPANY =@idc
+-		and a.ID_CONTACT != 0
+-		and DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+ group by a.ID_CONTACT
+ 	, a.ID_ORGANIZATION
+ 	, a.ID_COMPANY
+ 	, b.ID_CONTACT
+ 
+@@ -321,22 +375,25 @@ group by	a.ID_CONTACT
+ --declare @act_date date = (select max(DATA) from I_CHECKHEADER (nolock) where ID_COMPANY=@idc) 
+ 
+ 
+ drop table if exists #m
+ 
++-- Т2: канал — из #hist (строка на клиента × организацию, поэтому count(*) = число организаций); раньше — проход по всей истории
+ select	ID_CONTACT
+-		, [ID_SALE_CHANNEL] = IIF(count(distinct a.ID_ORGANIZATION)=2, 2, max(a.ID_ORGANIZATION) ) --1- offline , 2-omni, 3-online
++		, [ID_SALE_CHANNEL] = IIF(count(*)=2, 2, max(a.ID_ORGANIZATION) ) --1- offline , 2-omni, 3-online
+ 		, a.ID_COMPANY
+-		, COST_DISCOUNT_B = IIF(count(distinct a.ID_ORGANIZATION)=2, sum(IIF(DATA>= dateadd(day,+1, dateadd(week,-6,@act_date)),COST_DISCOUNT,0)), 0)
+-		, MIN_DATA_M =  IIF(count(distinct a.ID_ORGANIZATION)=2, null, min(IIF(DATA>= dateadd(day,+1, dateadd(week,-6,@act_date)), DATA,NULL)))
++		, COST_DISCOUNT_B = IIF(count(*)=2, sum(CD_6W), 0)
++		, MIN_DATA_M =  IIF(count(*)=2, null, min(MIN_DATA_6W))
+ into #m
+-from I_CHECKHEADER as a (nolock)
+-where a.ID_COMPANY=@idc 
++from #hist as a
++where a.ID_COMPANY=@idc
+ and ID_ORGANIZATION<>2
+ group by 	ID_CONTACT
+ 		, a.ID_COMPANY
+ 
++create clustered columnstore index cci_m on #m
++
+ --basic index
+ drop table if exists  #all_p
+ 
+ select  b.ID_COMPANY
+ 		, b.ID_ORGANIZATION
+@@ -378,50 +435,17 @@ from	 #for_basic_segment as b
+ group by  b.ID_COMPANY
+ 		, b.ID_ORGANIZATION
+ 		, b.ID_CONTACT
+ 		, SEGMENT
+ 		, REFERENCE_DATE
++option (recompile)
+ 
+-drop table if exists #for_cg
++create clustered columnstore index cci_all_p on #all_p
+ 
+-select  b.ID_COMPANY
+-		, b.ID_ORGANIZATION
+-		, b.ID_CONTACT
+-		, SEGMENT
+-		, VISITS = round(count(distinct ID_CONTACT_DATA)/10.00, 0)
+-		, COUNT_WEEK =round (count(distinct a.WEEKNUMBER)/5.00, 0)
+-		, BUDGET = round(sum(COST_Discount)/100,0)
+-		, SHARE_WEEKEND = round(IIF(isnull(count(distinct ID_CONTACT_DATA),0)=0 , NULL, sum( IIF(DAYTYPE!=1,1.00,0.00))/(count(distinct ID_CONTACT_DATA)*1.00))*100,0)
+-		, CARD_SALE =  round((case when isnull((sum(REAL_DISCOUNT)+sum(COST_DISCOUNT)),0)=0 then NULL
+-						else sum(DISCOUNT)/ (sum(REAL_DISCOUNT)+sum(COST_DISCOUNT)) end)*1000,0)
+-		, MAX_YM = max(YEAR_MONTH)
+-		, MIN_WEEK = min(WEEKNUMBER)
+-		, PRICE_INDEX = round(avg(PRICE_INDEX)*100,0)
+-		, TOKENS
+-		, HAS_PUSH
+-into #for_cg
+-from	 #for_basic_segment as b
+-		left join I_CHECKHEADER as a (nolock)
+-		on a.ID_COMPANY=b.ID_COMPANY
+-		and a.ID_ORGANIZATION=b.ID_ORGANIZATION
+-		and a.ID_CONTACT=b.ID_CONTACT
+-		and a.ID_COMPANY=@idc 
+-		and a.ID_CONTACT != 0
+-		left join I_CONTACT_PRICE_SEGMENT as c (nolock)
+-		on b.ID_COMPANY=c.ID_COMPANY
+-		and b.ID_ORGANIZATION=c.ID_ORGANIZATION
+-		and b.ID_CONTACT=c.ID_CONTACT
+-		left join I_CONTACT as f (nolocK)
+-		on b.ID_COMPANY=f.ID_COMPANY
+-		and b.ID_CONTACT=f.ID_CONTACT
+-		--and DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+-group by  b.ID_COMPANY
+-		, b.ID_ORGANIZATION
+-		, b.ID_CONTACT
+-		, SEGMENT
+-		, TOKENS
+-		, HAS_PUSH
++-- Т2: #for_cg (вся история чеков × I_CONTACT_PRICE_SEGMENT × I_CONTACT) больше не строится: из него в таблицу шёл только
++-- LTV = round(сумма чеков клиента в организации за всю историю / 100) * 100, а эта сумма уже есть в #first_purch
++-- (COST_DISCOUNT_FP); остальные поля #for_cg читала локальная КГ, отключённая 11.10.2026
+ 
+ 
+ --	DECLARE @c int = 1
+ --DECLARE @idc int = (select ID_COMPANY from #c where RN=@c)
+ 
+@@ -430,29 +454,89 @@ group by  b.ID_COMPANY
+ 
+ --truncate table I_CVM_CONTACT
+ 
+ 
+ -- локальная контрольная группа (#local_cg) в процедуре не считается с 11.10.2026 (решение Елены): КГ выделяется при
+--- формировании списка акции (портал «Сегменты», скрипты выборок). #for_cg остаётся — из него берётся LTV.
++-- формировании списка акции (портал «Сегменты», скрипты выборок). LTV — из #first_purch (Т2, 01.11.2026).
+ 
+ --darkstore 
+ drop table if exists  #main_shop
+ 
+-;with t as 
+-(
+-select	ID_CONTACT
++-- Т2: любимый магазин считается по 8 последним парам «магазин × день» клиента. Раньше нумеровались все пары всей истории,
++-- и дважды (CTE t читался двумя ссылками). Теперь: пары последних 26 недель (#sd); историю дочитываем только клиентам, у которых
++-- в 26 неделях меньше 8 пар (#few) — у остальных старые пары в 8 последних не попадают; номера пар — один раз (#t8).
++-- Чеки без карты (клиент 0) не считаем — в таблицу они не попадают. Расчёт a, x, y — как был
++declare @dms date = dateadd(week,-26,@act_date)
++
++drop table if exists #sd, #few, #t8;
++
++create table #sd (ID_CONTACT int, ID_SHOP int, ID_COMPANY int, DATA date, COST_DISCOUNT decimal(38,2)
++	, index cci_sd clustered columnstore)
++
++insert into #sd with (tablock)
++select ID_CONTACT
++	, ID_SHOP
++	, ID_COMPANY
++	, DATA
++	, COST_DISCOUNT = sum(COST_DISCOUNT)
++from I_CHECKHEADER (nolock)
++where ID_COMPANY = @idc and ID_CONTACT != 0 and DATA > @dms
++group by ID_CONTACT
++	, ID_SHOP
++	, ID_COMPANY
++	, DATA
++option (recompile)
++
++select k.ID_CONTACT
++into #few
++from	(select ID_CONTACT from #hist group by ID_CONTACT) k
++		left join (select ID_CONTACT, N = count(*) from #sd group by ID_CONTACT) s
++		on s.ID_CONTACT = k.ID_CONTACT
++where isnull(s.N, 0) < 8
++
++create clustered columnstore index cci_few on #few
++
++insert into #sd with (tablock)
++select h.ID_CONTACT
++	, h.ID_SHOP
++	, h.ID_COMPANY
++	, h.DATA
++	, COST_DISCOUNT = sum(h.COST_DISCOUNT)
++from I_CHECKHEADER h (nolock)
++where h.ID_COMPANY = @idc and h.ID_CONTACT != 0 and (h.DATA <= @dms or h.DATA is null)
++	and exists (select 1 from #few f where f.ID_CONTACT = h.ID_CONTACT)
++group by h.ID_CONTACT
++	, h.ID_SHOP
++	, h.ID_COMPANY
++	, h.DATA
++option (recompile)
++
++create table #t8 (ID_CONTACT int, ID_SHOP int, ID_COMPANY int, RN bigint, COST_DISCOUNT decimal(38,2)
++	, index cci_t8 clustered columnstore)
++
++insert into #t8 with (tablock)
++select ID_CONTACT
++	, ID_SHOP
++	, ID_COMPANY
++	, RN
++	, COST_DISCOUNT
++from (select ID_CONTACT
+ 		, ID_SHOP
+ 		, ID_COMPANY
+ 		, RN= ROW_NUMBER() over (partition by ID_CONTACT, ID_COMPANY order  by DATA desc)
+-		, COST_DISCOUNT=sum(COST_DISCOUNT)
+-		--, COUNT_CHECK = COUNT( ID_CHECK)
+-from	I_CHECKHEADER as a (nolock)
+-where ID_COMPANY=@idc
+-group by ID_CONTACT
++		, COST_DISCOUNT
++	from #sd) q
++where RN <= 8
++
++;with t as
++(
++select	ID_CONTACT
+ 		, ID_SHOP
+ 		, ID_COMPANY
+-		, DATA
++		, RN
++		, COST_DISCOUNT
++from #t8
+ ), a as (
+ select ID_CONTACT
+ 		, ID_COMPANY
+ 		, COUNT_CHECK= count(RN)*1.00
+ 		, COST_DISCOUNT=sum(COST_DISCOUNT)
+@@ -509,142 +593,178 @@ into #d_contact
+ from	#main_shop as a
+ 		left join  I_SHOP_DARKSTORE as b (nolock)
+ 		on a.ID_COMPANY=b.ID_COMPANY
+ 		and a.ID_SHOP=b.ID_SHOP
+ 
++create clustered columnstore index cci_d_contact on #d_contact
++
+ --drop table if exists  I_CVM_CONTACT 
+ 
+ 
+ ----------------------------------------
+ 
+ 
+-drop table if exists #fav_prod;
++-- Т2: любимые товары и категории. Строки чеков 6 недель читаются один раз и только по клиентам с выбором (#chk_fav),
++-- категория совпадает равенством по каждому уровню (раньше — два прохода I_CHECK и соединение через OR). Как и было:
++-- FAV_*_USE = 1 у организации, где в срок выбора (от даты выбора до следующего выбора того же) куплен выбранный товар /
++-- товар выбранной категории; FAV_*_CHOICE = 1 у клиента с выбором за 6 недель
++drop table if exists #fp_t2, #fc_t2, #fav_cli, #chk_fav;
+ 
+-;with t1 as (
+ select ID_CONTACT
+ 	, DATA
+ 	, ID_PRODUCT
+-from fav_product (nolock)
+-where DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+-group by ID_CONTACT
++	, next_date = isnull(lead(DATA) over(partition by ID_CONTACT, ID_PRODUCT order by DATA), dateadd(day, 2, @act_date))
++into #fp_t2
++from (select ID_CONTACT
++		, DATA
++		, ID_PRODUCT
++	from fav_product (nolock)
++	where DATA between @d6 and @act_date
++	group by ID_CONTACT
++		, DATA
++		, ID_PRODUCT) t1
++
++create clustered columnstore index cci_fp_t2 on #fp_t2
++
++select ID_CONTACT
+ 	, DATA
++	, ID_CATEGORY_2
++	, ID_CATEGORY_3
++	, ID_CATEGORY_4
++	, ID_CATEGORY_5
+ 	, ID_PRODUCT
+-)
+-, t2 as (
+-select t1.*
+-	, next_date = isnull(lead(DATA) over(partition by ID_CONTACT, ID_PRODUCT order by DATA), dateadd(day, 2, @act_date))
+-from t1
+-)
+-, t3 as (
+-select
+-	t2.ID_CONTACT 
+-	, ID_ORGANIZATION = isnull(ID_ORGANIZATION, max(ID_ORGANIZATION) over (partition by t2.ID_CONTACT))
+-	, ID_COMPANY = isnull(ID_COMPANY, 1)
+-	, flg_use = iif(a.ID_CONTACT is not null, 1, 0)
+-from t2
+-	left join I_CHECK (nolock) a
+-		on a.ID_CONTACT = t2.ID_CONTACT
+-		and a.DATA >= t2.DATA
+-		and a.DATA < t2.next_date
+-		and a.ID_PRODUCT = t2.ID_PRODUCT
+-		and a.DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+-		and ID_COMPANY = @idc
+-group by t2.ID_CONTACT
+-	, a.ID_CONTACT 
+-	, ID_ORGANIZATION
+-	, ID_COMPANY
+-)
+-select ID_CONTACT 
+-	, ID_ORGANIZATION
+-	, ID_COMPANY
+-	, flg_use = max(flg_use)
++	, next_date = isnull(lead(DATA) over(partition by ID_CONTACT, ID_CATEGORY_2, ID_CATEGORY_3, ID_CATEGORY_4, ID_CATEGORY_5, ID_PRODUCT order by DATA), dateadd(day, 2, @act_date))
++into #fc_t2
++from (select ID_CONTACT
++		, DATA
++		, ID_CATEGORY_2
++		, ID_CATEGORY_3
++		, ID_CATEGORY_4
++		, ID_CATEGORY_5
++		, ID_PRODUCT
++	from fav_CATEGORY (nolock)
++	where DATA between @d6 and @act_date
++	group by ID_CONTACT
++		, DATA
++		, ID_CATEGORY_2
++		, ID_CATEGORY_3
++		, ID_CATEGORY_4
++		, ID_CATEGORY_5
++		, ID_PRODUCT) t1
++
++create clustered columnstore index cci_fc_t2 on #fc_t2
++
++select ID_CONTACT
++into #fav_cli
++from #fp_t2
++union
++select ID_CONTACT
++from #fc_t2
++
++create clustered columnstore index cci_fav_cli on #fav_cli
++
++create table #chk_fav (ID_CONTACT int, ID_ORGANIZATION int, ID_COMPANY int, DATA date, ID_PRODUCT bigint
++	, ID_CATEGORY_2 int, ID_CATEGORY_3 int, ID_CATEGORY_4 int, ID_CATEGORY_5 int
++	, index cci_chk_fav clustered columnstore)
++
++insert into #chk_fav with (tablock)
++select a.ID_CONTACT
++	, a.ID_ORGANIZATION
++	, a.ID_COMPANY
++	, a.DATA
++	, a.ID_PRODUCT
++	, a.ID_CATEGORY_2
++	, a.ID_CATEGORY_3
++	, a.ID_CATEGORY_4
++	, a.ID_CATEGORY_5
++from I_CHECK a (nolock)
++where a.ID_COMPANY = @idc and a.DATA between @d6 and @act_date
++	and exists (select 1 from #fav_cli f where f.ID_CONTACT = a.ID_CONTACT)
++option (recompile)
++
++drop table if exists #fav_prod;
++
++select p.ID_CONTACT
++	, c.ID_ORGANIZATION
++	, c.ID_COMPANY
++	, flg_use = 1
+ into #fav_prod
+-from t3
+-group by ID_CONTACT 
+-	, ID_ORGANIZATION
+-	, ID_COMPANY
++from #fp_t2 p
++	join #chk_fav c
++		on c.ID_CONTACT = p.ID_CONTACT
++		and c.ID_PRODUCT = p.ID_PRODUCT
++		and c.DATA >= p.DATA
++		and c.DATA < p.next_date
++group by p.ID_CONTACT
++	, c.ID_ORGANIZATION
++	, c.ID_COMPANY
++
++create clustered columnstore index cci_fav_prod on #fav_prod
+ 
+ 
+ drop table if exists #fav_prod_choice;
+ 
+ select ID_CONTACT
+ into #fav_prod_choice
+-from #fav_prod
++from #fp_t2
+ group by ID_CONTACT
+ 
++create clustered columnstore index cci_fav_prod_choice on #fav_prod_choice
++
+ 
+ 
+ 
+ 
+ drop table if exists #fav_cat;
+ 
+-;with t1 as (
+ select ID_CONTACT
+-	, DATA
+-	, ID_CATEGORY_2
+-	, ID_CATEGORY_3
+-	, ID_CATEGORY_4
+-	, ID_CATEGORY_5
+-	, ID_PRODUCT
+-from fav_CATEGORY (nolock)
+-where DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+-group by ID_CONTACT
+-	, DATA
+-	, ID_CATEGORY_2
+-	, ID_CATEGORY_3
+-	, ID_CATEGORY_4
+-	, ID_CATEGORY_5
+-	, ID_PRODUCT
+-)
+-, t2 as (
+-select *
+-	, next_date = isnull(lead(DATA) over(partition by ID_CONTACT, ID_CATEGORY_2, ID_CATEGORY_3, ID_CATEGORY_4, ID_CATEGORY_5, ID_PRODUCT order by DATA), dateadd(day, 2, @act_date))
+-from t1 
+-)
+-, t3 as (
+-select 
+-	t2.ID_CONTACT 
+-	, ID_ORGANIZATION = isnull(ID_ORGANIZATION, max(ID_ORGANIZATION) over (partition by t2.ID_CONTACT))
+-	, ID_COMPANY = isnull(ID_COMPANY, 1)
+-	, flg_use = iif(a.ID_CONTACT is not null, 1, 0)
+-from t2
+-	left join I_CHECK (nolock) a
+-		on a.ID_CONTACT = t2.ID_CONTACT
+-		and a.DATA >= t2.DATA
+-		and a.DATA < t2.next_date
+-		and 
+-			(a.ID_PRODUCT = t2.ID_PRODUCT
+-			or a.ID_CATEGORY_2 = t2.ID_CATEGORY_2
+-			or a.ID_CATEGORY_3 = t2.ID_CATEGORY_3
+-			or a.ID_CATEGORY_4 = t2.ID_CATEGORY_4
+-			or a.ID_CATEGORY_5 = t2.ID_CATEGORY_5)
+-		and a.DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+-		and ID_COMPANY = @idc
+-group by t2.ID_CONTACT 
+-	, a.ID_CONTACT
+-	, ID_ORGANIZATION
+-	, ID_COMPANY
+-)
+-select ID_CONTACT 
+ 	, ID_ORGANIZATION
+ 	, ID_COMPANY
+-	, flg_use = max(flg_use)
++	, flg_use = 1
+ into #fav_cat
+-from t3
+-group by ID_CONTACT 
+-	, ID_ORGANIZATION
+-	, ID_COMPANY
++from (
++	-- ревью Т2: полусоединение (exists) вместо соединения — у одного уровня категории у клиента бывает несколько выборов
++	-- с пересекающимися сроками, соединение размножало строки чеков до UNION; набор (клиент, организация) тот же
++	select c.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY
++	from #chk_fav c
++	where exists (select 1 from #fc_t2 f where f.ID_CONTACT = c.ID_CONTACT and c.DATA >= f.DATA and c.DATA < f.next_date
++			and f.ID_PRODUCT = c.ID_PRODUCT)
++	union
++	select c.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY
++	from #chk_fav c
++	where exists (select 1 from #fc_t2 f where f.ID_CONTACT = c.ID_CONTACT and c.DATA >= f.DATA and c.DATA < f.next_date
++			and f.ID_CATEGORY_2 = c.ID_CATEGORY_2)
++	union
++	select c.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY
++	from #chk_fav c
++	where exists (select 1 from #fc_t2 f where f.ID_CONTACT = c.ID_CONTACT and c.DATA >= f.DATA and c.DATA < f.next_date
++			and f.ID_CATEGORY_3 = c.ID_CATEGORY_3)
++	union
++	select c.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY
++	from #chk_fav c
++	where exists (select 1 from #fc_t2 f where f.ID_CONTACT = c.ID_CONTACT and c.DATA >= f.DATA and c.DATA < f.next_date
++			and f.ID_CATEGORY_4 = c.ID_CATEGORY_4)
++	union
++	select c.ID_CONTACT, c.ID_ORGANIZATION, c.ID_COMPANY
++	from #chk_fav c
++	where exists (select 1 from #fc_t2 f where f.ID_CONTACT = c.ID_CONTACT and c.DATA >= f.DATA and c.DATA < f.next_date
++			and f.ID_CATEGORY_5 = c.ID_CATEGORY_5)
++) u
++
++create clustered columnstore index cci_fav_cat on #fav_cat
+ 
+ 
+ 
+ drop table if exists #fav_cat_choice;
+ 
+ select ID_CONTACT
+ into #fav_cat_choice
+-from #fav_cat
++from #fc_t2
+ group by ID_CONTACT
+ 
++create clustered columnstore index cci_fav_cat_choice on #fav_cat_choice
++
+ 
+ 
+ 
+ drop table if exists #camp;
+ 
+@@ -726,11 +846,12 @@ where h.DATA between dateadd(day,+1, dateadd(week,-6,@act_date)) and @act_date
+ 	and h.ID_CONTACT != 0		-- контакт 0 в таблицу не попадает (inner join #first_purch финальной вставки)
+ 	and h.ID_ORGANIZATION <> 2	-- организация 2 в таблицу не попадает (where d.ID_ORGANIZATION<>2)
+ 	and r.ID_CHECK between @chk_min and @chk_max	-- отсечение I_CHECK_RULE по диапазону чеков окна (см. выше)
+ group by h.ID_CONTACT
+ 	, h.ID_ORGANIZATION
+-	, h.ID_COMPANY;
++	, h.ID_COMPANY
++option (recompile);	-- ревью Т2 (CC-8): окно и диапазон ID_CHECK заданы переменными
+ 
+ create clustered columnstore index CCI_rule_use on #rule_use;
+ 
+ drop table if exists #push;
+ 
+@@ -776,14 +897,15 @@ create clustered columnstore index CCI_push on #push;
+ 
+ 
+ --all cvm
+ 
+ -- очистка прямо перед вставкой (раньше — в начале процедуры): пока идёт расчёт, в таблице данные прошлого прогона
++-- Т2: WITH (TABLOCK) — вставка в пустую кучу параллельно и с минимальным протоколированием (база SIMPLE); строки те же
+ if @c = 1
+ 	truncate table I_CVM_CONTACT
+ 
+-INSERT INTO I_CVM_CONTACT 
++INSERT INTO I_CVM_CONTACT WITH (TABLOCK)
+ select d.[ID_COMPANY]
+       ,d.[ID_ORGANIZATION]
+       ,d.[ID_CONTACT]
+       ,d.[SEGMENT]
+ 	  , f.TOKENS
+@@ -828,11 +950,11 @@ select d.[ID_COMPANY]
+ 		, ID_RFM_CLUSTER = null 
+ 		, RFM_CLUSTER = null 
+ 		, ID_CLUSTER = null 
+ 		, CLUSTER = null 
+ 		, CONTROL_GROUP = NULL	-- локальная КГ в процедуре не считается с 11.10.2026; колонка остаётся (вставка без списка колонок)
+-		, LTV = h.BUDGET*100
++		, LTV = round(e.COST_DISCOUNT_FP/100,0)*100	-- Т2: как было в #for_cg — round(sum(COST_DISCOUNT)/100,0)*100 по всей истории
+ 		, LOVE_STORE = x.ID_SHOP
+ 		, ID_DARKSTORE
+ 		, AFFINITIVE_SCORE=null
+ 		, FAV_PRODUCT_CHOICE = iif(fpc.ID_CONTACT is null, 0, 1)
+ 		, FAV_CATEGORY_CHOICE = iif(fcc.ID_CONTACT is null, 0, 1)
+@@ -858,14 +980,10 @@ from	#all_p as d
+ 		and  d.ID_ORGANIZATION=e.ID_ORGANIZATION
+ 		and d.ID_CONTACT=e.ID_CONTACT
+ 		left join I_CONTACT as f (nolocK)
+ 		on d.ID_COMPANY=f.ID_COMPANY
+ 		and d.ID_CONTACT=f.ID_CONTACT
+-		left join #for_cg as h 
+-		on d.ID_CONTACT=h.ID_CONTACT	
+-		and d.SEGMENT=h.SEGMENT
+-		and d.ID_ORGANIZATION=h.ID_ORGANIZATION
+ 		inner join #d_contact as x
+ 		on d.ID_COMPANY=x.ID_COMPANY
+ 		and x.ID_CONTACT=d.ID_CONTACT
+ 		left join #fav_cat_choice fcc
+ 		on d.ID_CONTACT = fcc.ID_CONTACT

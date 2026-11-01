@@ -1,0 +1,102 @@
+активность: старт 2026-11-01 04:49:16 | последний шаг 29 2026-11-01 11:31:41 | конец None
+
+== прогон 20261030: шагов в истории 41 | итог 13:04:48 статус 1
+   17 Communication processing         старт 092237 длит 0:05:11
+   18 fav_cat_prod_load                старт 092748 длит 0:02:18
+   21 CVM_CONTACT                      старт 093037 длит 1:50:20
+   22 CLIENT_ITEM                      старт 112057 длит 1:26:15
+   23 PRODUCT_SCORE_REGION             старт 124712 длит 0:05:37
+   24 GCG_REPORT                       старт 125249 длит 0:01:48
+   26 CVM_CONTACT_DATA_W               старт 125443 длит 0:19:20
+   27 AFFINITIVE_MODEL                 старт 131403 длит 0:01:32
+   28 Shop time                        старт 131535 длит 0:02:13
+   29 for_i_segment                    старт 131748 длит 0:03:13
+   30 I_ASSORT_WEEK                    старт 132101 длит 0:20:31
+   31 CVM_LIVE_ASSORT                  старт 134132 длит 0:01:13
+   32 I_cont_assort_w                  старт 134245 длит 0:02:43
+   35 I_CONTACT_PRICE_SEGMENT          старт 134549 длит 0:20:13
+   37 CLUSTERS                         старт 140602 длит 1:48:38
+   38 CLUSTER_SCORE                    старт 155440 длит 0:17:14
+   40 PP_EFFECT_MONTH                  старт 161210 длит 0:03:14
+   41 I_CH_INDEXEX                     старт 161524 длит 0:01:40
+   46 DELIVERY_REPORT                  старт 161737 длит 0:12:00
+   48 DISCOUNT_MART                    старт 162937 длит 0:08:24
+   49 DISC_MODEL_MART                  старт 163801 длит 0:46:09
+   50 DISC_EFFECT                      старт 172410 длит 0:04:25
+   51 BONUS_MART                       старт 172835 длит 0:04:30
+   52 CVM_EFFECT_TODAY                 старт 173305 длит 0:27:20
+   54 I_TRENDS                         старт 180025 длит 0:36:27
+
+== прогон 20261031: шагов в истории 57 | итог 13:05:26 статус 1
+    1 CLEAR DATA                       старт 044314 длит 0:35:42
+    4 Check Product Update             старт 051939 длит 0:59:50
+    8 Check rules processing           старт 061934 длит 0:07:24
+    9 Checks and checkheaders processi старт 062658 длит 0:22:58
+   10 I_CHECK_DELTA_EA                 старт 064956 длит 0:04:42
+   11 Cards Processing                 старт 065438 длит 0:16:34
+   12 Price processing                 старт 071112 длит 0:17:37
+   13 INSERT I_CHECK_DELTA             старт 072849 длит 0:58:54
+   15 Contacts processing              старт 082743 длит 0:05:38
+   16 MISTAKE_CONTACT                  старт 083321 длит 0:01:33
+   17 Communication processing         старт 083454 длит 0:05:02
+   18 fav_cat_prod_load                старт 083956 длит 0:01:12
+   21 CVM_CONTACT                      старт 084139 длит 1:48:12
+   22 CLIENT_ITEM                      старт 102951 длит 1:30:08
+   23 PRODUCT_SCORE_REGION             старт 115959 длит 0:06:09
+   24 GCG_REPORT                       старт 120608 длит 0:01:48
+   26 CVM_CONTACT_DATA_W               старт 120803 длит 0:18:30
+   27 AFFINITIVE_MODEL                 старт 122633 длит 0:01:17
+   28 Shop time                        старт 122750 длит 0:02:08
+   29 for_i_segment                    старт 122958 длит 0:03:03
+   30 I_ASSORT_WEEK                    старт 123301 длит 0:20:29
+   31 CVM_LIVE_ASSORT                  старт 125330 длит 0:01:10
+   32 I_cont_assort_w                  старт 125440 длит 0:03:01
+   35 I_CONTACT_PRICE_SEGMENT          старт 125801 длит 0:20:00
+   37 CLUSTERS                         старт 131802 длит 1:50:50
+   38 CLUSTER_SCORE                    старт 150852 длит 0:17:39
+   40 PP_EFFECT_MONTH                  старт 152648 длит 0:04:07
+   41 I_CH_INDEXEX                     старт 153055 длит 0:01:40
+   46 DELIVERY_REPORT                  старт 153310 длит 0:11:57
+   48 DISCOUNT_MART                    старт 154507 длит 0:08:22
+   49 DISC_MODEL_MART                  старт 155329 длит 0:47:36
+   50 DISC_EFFECT                      старт 164105 длит 0:05:03
+   51 BONUS_MART                       старт 164608 длит 0:04:36
+   52 CVM_EFFECT_TODAY                 старт 165044 длит 0:52:36
+   53 cohort_new                       старт 174320 длит 0:05:06
+
+== прогон 20261101: шагов в истории 29 | ещё идёт или итог не в истории
+    1 CLEAR DATA                       старт 044916 длит 0:35:49
+    4 Check Product Update             старт 052539 длит 0:50:50
+    8 Check rules processing           старт 061635 длит 0:09:49
+    9 Checks and checkheaders processi старт 062624 длит 0:23:40
+   10 I_CHECK_DELTA_EA                 старт 065004 длит 0:04:37
+   11 Cards Processing                 старт 065441 длит 0:16:49
+   12 Price processing                 старт 071130 длит 0:18:11
+   13 INSERT I_CHECK_DELTA             старт 072941 длит 1:00:20
+   15 Contacts processing              старт 083001 длит 0:05:47
+   17 Communication processing         старт 083644 длит 0:05:40
+   18 fav_cat_prod_load                старт 084224 длит 0:02:40
+   22 CVM_CONTACT                      старт 084538 длит 1:48:11
+   23 DELIVERY_REPORT                  старт 103349 длит 0:11:40
+   24 GCG_REPORT                       старт 104529 длит 0:01:48
+   26 CVM_CONTACT_DATA_W               старт 104723 длит 0:20:06
+   27 AFFINITIVE_MODEL                 старт 110729 длит 0:02:54
+   28 I_ASSORT_WEEK                    старт 111023 длит 0:21:18
+   29 I_cont_assort_w                  старт 113141 длит 0:03:33
+
+== топ-15 шагов по сумме длительностей в истории
+   37 CLUSTERS                         3:39:28
+   21 CVM_CONTACT                      3:38:32
+   22 CLIENT_ITEM                      2:56:23
+   13 INSERT I_CHECK_DELTA             1:59:14
+    4 Check Product Update             1:50:40
+   22 CVM_CONTACT                      1:48:11
+   49 DISC_MODEL_MART                  1:33:45
+   52 CVM_EFFECT_TODAY                 1:19:56
+    1 CLEAR DATA                       1:11:31
+   26 CVM_CONTACT_DATA_W               0:57:56
+    9 Checks and checkheaders processi 0:46:38
+   30 I_ASSORT_WEEK                    0:41:00
+   35 I_CONTACT_PRICE_SEGMENT          0:40:13
+   54 I_TRENDS                         0:36:30
+   12 Price processing                 0:35:48
