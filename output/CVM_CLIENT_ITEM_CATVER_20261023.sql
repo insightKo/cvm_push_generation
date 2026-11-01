@@ -7,8 +7,17 @@
 --                                 справочника дня в CVM_CLIENT_ITEM_CAT_VER в той же транзакции дня. Текст — из CVM_CLIENT_ITEM.sql (b742270).
 --   НЕ ТРОГАЕТСЯ: таблицы витрины и их данные, журнал, остальные процедуры, задания (работающее задание истории продолжает работу;
 --                 дни, загруженные с этого момента, получают отметку версии).
+-- 01.11.2026: процедуру ключей заменил Т3 бэклога ночного задания (CVM_CLIENT_ITEM_T3_20261101.sql, новые параметры @check_same,
+--   @kept, которые передаёт client_item_load). Повторный запуск этого файла поставил бы прежнюю процедуру и уронил ночной шаг —
+--   при процедуре версии Т3 файл останавливается ниже, ничего не меняя. Актуальный установочный текст — CVM_CLIENT_ITEM.sql.
 -- ============================================================================================
 USE mci_model;
+GO
+IF EXISTS (SELECT 1 FROM sys.parameters WHERE object_id = OBJECT_ID(N'dbo.client_item_keys_day') AND name = N'@check_same')
+BEGIN
+    RAISERROR(N'STOP: client_item_keys_day is already T3 version (01.11.2026) - this 23.10 file would break CLIENT_ITEM; nothing changed.', 16, 1);
+    SET NOEXEC ON;
+END
 GO
 -- 1.5 Версия справочника категорий по дням (маленькая служебная, точечные UPDATE по дню — без колоночного индекса)
 IF OBJECT_ID('dbo.CVM_CLIENT_ITEM_CAT_VER') IS NULL
@@ -102,4 +111,6 @@ BEGIN
     IF @@ROWCOUNT = 0
         INSERT dbo.CVM_CLIENT_ITEM_CAT_VER (DATA, CAT_VER, BUILT_AT) VALUES (@d, @ver, SYSDATETIME());
 END
+GO
+SET NOEXEC OFF;
 GO

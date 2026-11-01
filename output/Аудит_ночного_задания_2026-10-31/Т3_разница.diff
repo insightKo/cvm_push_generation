@@ -1,0 +1,208 @@
+# Т3, 01.11.2026 (после ревью sql-senior, круги 1–2). client_item_load: живой текст (с 19.10.2026) -> новый.
+--- client_item_load (в базе с 19.10.2026)
++++ client_item_load (Т3)
+@@ -20,6 +20,7 @@
+     DECLARE @ndays int = 0, @rows bigint = 0, @n bigint, @krows bigint = 0, @kn bigint;
+     DECLARE @ch int, @nch int, @rn int, @rmax int, @d date, @pn int, @cmin date, @cmax date, @first date;
+     DECLARE @sql nvarchar(max), @msg nvarchar(2000);
++    DECLARE @n_new bigint, @n_old bigint, @n_diff bigint, @same bit, @kept bit, @skip_items int = 0, @skip_keys int = 0;   -- Т3
+ 
+     IF @mode NOT IN ('night', 'init')
+         THROW 50001, N'client_item_load: режим должен быть night или init.', 1;
+@@ -145,6 +146,10 @@
+         CREATE TABLE #chunk (DATA date NOT NULL, ID_ORGANIZATION int NOT NULL, ID_CONTACT int NOT NULL, ID_CHECK bigint NOT NULL,
+                              ID_PRODUCT bigint NOT NULL, SUMMA decimal(18,2) NULL, QTY decimal(18,3) NULL, EXT5 bigint NULL);
+         CREATE CLUSTERED COLUMNSTORE INDEX CCI_chunk ON #chunk;
++        -- Т3: секция дня для сравнения с порцией (ночью, только у дня с равным числом строк; ~6–7 млн строк)
++        DROP TABLE IF EXISTS #day_old;
++        CREATE TABLE #day_old (ID_ORGANIZATION int NOT NULL, ID_CONTACT int NOT NULL, ID_CHECK bigint NOT NULL, ID_PRODUCT bigint NOT NULL,
++                               SUMMA decimal(18,2) NULL, QTY decimal(18,3) NULL, EXT5 bigint NULL, INDEX CCI_day_old CLUSTERED COLUMNSTORE);
+ 
+         SET @nch = (SELECT ISNULL(MAX(CH), 0) FROM #days);
+         SET @ch = 1;
+@@ -170,7 +175,41 @@
+             WHILE @rn <= @rmax
+             BEGIN
+                 SELECT @d = DATA FROM #days WHERE RN = @rn;
++                -- Т3 (01.11.2026, бэклог ночного задания): ночью перезаливка MCI отдаёт заново 10 последних дней, часть из них не
++                -- меняется. День, чьи товарные строки уже такие, какие дала бы перезапись, не переписывается: то же число строк в
++                -- секции дня и ни одной строки порции, которой нет в секции (строки порции уникальны по чеку и товару — GROUP BY выше;
++                -- строки других компаний или с заполненной ID_CATEGORY_CVM в секции дают неравное число — день переписывается).
++                -- Ключи такого дня сравнивает client_item_keys_day (@check_same = 1). Загрузка истории (init) — как прежде.
++                SET @same = 0;
++                SET @kept = 0;
++                IF @mode = 'night'
++                BEGIN
++                    SELECT @n_new = COUNT_BIG(*) FROM #chunk WHERE DATA = @d;
++                    SELECT @n_old = COUNT_BIG(*) FROM dbo.I_CLIENT_ITEM_DAY WITH (NOLOCK) WHERE DATA = @d;
++                    IF @n_new > 0 AND @n_new = @n_old
++                    BEGIN
++                        -- секция дня — сначала во временную: EXCEPT прямо по витрине заставил бы сервер создать статистики по
++                        -- SUMMA и QTY на всю таблицу (их нет); полный подсчёт разницы, не NOT EXISTS — цель «первая строка»
++                        -- толкает план к вложенным циклам
++                        TRUNCATE TABLE #day_old;
++                        INSERT INTO #day_old WITH (TABLOCK) (ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, QTY, EXT5)
++                        SELECT ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, QTY, ID_CATEGORY_5_EXT
++                        FROM dbo.I_CLIENT_ITEM_DAY WITH (NOLOCK)
++                        WHERE DATA = @d AND ID_COMPANY = @idc AND ID_CATEGORY_CVM IS NULL;
++                        SELECT @n_diff = COUNT_BIG(*)
++                        FROM (SELECT ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, QTY, EXT5
++                              FROM #chunk WHERE DATA = @d
++                              EXCEPT
++                              SELECT ID_ORGANIZATION, ID_CONTACT, ID_CHECK, ID_PRODUCT, SUMMA, QTY, EXT5
++                              FROM #day_old) AS x
++                        OPTION (RECOMPILE);
++                        IF @n_diff = 0
++                            SET @same = 1;
++                    END
++                END
+                 BEGIN TRANSACTION;
++                IF @same = 0
++                BEGIN   -- Т3
+                 SET @pn = $PARTITION.pf_CLIENT_ITEM_DAY(@d);
+                 SET @sql = CONCAT(N'TRUNCATE TABLE dbo.I_CLIENT_ITEM_DAY WITH (PARTITIONS (', @pn, N'));');
+                 EXEC sys.sp_executesql @sql;
+@@ -184,9 +223,16 @@
+                 ORDER BY ID_PRODUCT
+                 OPTION (MAXDOP 1);
+                 SET @n = @@ROWCOUNT;
++                END     -- Т3
++                ELSE
++                BEGIN   -- Т3: товарные строки дня не меняются
++                    SET @n = @n_new;
++                    SET @skip_items += 1;
++                END
+                 -- ключи дня сразу после товарной строки дня (TRUNCATE секции дня в KEY_DAY + вставка внутри)
+-                EXEC dbo.client_item_keys_day @d = @d, @rows = @kn OUTPUT;
++                EXEC dbo.client_item_keys_day @d = @d, @rows = @kn OUTPUT, @check_same = @same, @kept = @kept OUTPUT;   -- Т3: + @check_same, @kept
+                 COMMIT TRANSACTION;
++                SET @skip_keys += @kept;                                                                                 -- Т3
+                 SET @rows += @n;
+                 SET @krows += @kn;
+                 SET @rn += 1;
+@@ -197,6 +243,10 @@
+         UPDATE dbo.CVM_CLIENT_ITEM_LOG
+         SET FINISHED = SYSDATETIME(), DATE_FROM = @date_from, DATE_TO = @date_to, DAYS_DONE = @ndays, ROWS_ = @rows,
+             KEY_ROWS = @krows, LOADING_DT = @marker, STATUS = 'OK'
++            -- Т3: ночью — сколько дней не переписано (журнал читают портал и история по STATUS/DATE_TO/LOADING_DT, это поле — нет)
++          , ERROR_MSG = CASE WHEN @mode = 'night' AND @ndays > 0
++                             THEN CONCAT(N'Т3: дней без перезаписи — товарные строки ', @skip_items, N' из ', @ndays,
++                                         N', ключи ', @skip_keys, N' из ', @ndays) END
+         WHERE ID = @log_id;
+ 
+         EXEC sys.sp_releaseapplock @Resource = N'CVM_CLIENT_ITEM', @LockOwner = N'Session';
+
+# client_item_keys_day: живой текст с 23.10.2026 — CVM_CLIENT_ITEM_CATVER_20261023.sql с испорченной кириллицей (ушёл не в UTF-16);
+# ниже разница от текста с восстановленной кириллицей (символ в символ равен файлу 23.10) до нового.
+--- client_item_keys_day (23.10.2026, кириллица восстановлена)
++++ client_item_keys_day (Т3)
+@@ -1,10 +1,14 @@
+ CREATE   PROCEDURE dbo.client_item_keys_day
+       @d    date
+     , @rows bigint OUTPUT
++    , @check_same bit = 0           -- Т3 (01.11.2026): 1 — товарные строки дня не менялись, ключи сначала сравнить с секцией (ниже)
++    , @kept bit = 0 OUTPUT          -- Т3: 1 — секция ключей уже совпадала и не переписывалась
+ AS
+ BEGIN
+     SET NOCOUNT ON;
+     DECLARE @idc int = 1, @pn int, @sql nvarchar(max), @ver int;
++    DECLARE @k_new bigint, @k_old bigint, @k_diff bigint;                       -- Т3
++    SET @kept = 0;
+ 
+     -- у дня должна быть своя секция (иначе TRUNCATE секции стёр бы соседние дни)
+     IF $PARTITION.pf_CLIENT_ITEM_DAY(@d) = 1
+@@ -37,6 +41,86 @@
+ 
+     SET @pn = $PARTITION.pf_CLIENT_ITEM_DAY(@d);
+     SET @sql = CONCAT(N'TRUNCATE TABLE dbo.I_CLIENT_ITEM_KEY_DAY WITH (PARTITIONS (', @pn, N'));');
++
++    -- Т3 (01.11.2026, бэклог ночного задания): ночной шаг передаёт @check_same = 1 у дня, чьи товарные строки совпали с секцией
++    -- (client_item_load). Справочники категорий и миссий меняются и при тех же чеках, поэтому ключи такого дня собираются во
++    -- временную тем же запросом, что в ветке ниже (два запроса держать одинаковыми), и сравниваются с секцией ключей дня: то же
++    -- число строк и ни одной строки временной, которой нет в секции (строки уникальны по клиенту, типу и ключу) — секция уже
++    -- такая, какой её сделала бы перезапись, и не трогается; иначе — TRUNCATE секции и вставка из временной в том же порядке.
++    IF @check_same = 1
++    BEGIN
++        DROP TABLE IF EXISTS #kd_new;
++        CREATE TABLE #kd_new (ID_ORGANIZATION int NOT NULL, ID_CONTACT int NOT NULL, KEY_TYPE tinyint NOT NULL, ID_KEY bigint NOT NULL,
++                              CHECKS int NOT NULL, SUMMA decimal(18, 2) NOT NULL, INDEX CCI_kd_new CLUSTERED COLUMNSTORE);
++        INSERT INTO #kd_new WITH (TABLOCK) (ID_ORGANIZATION, ID_CONTACT, KEY_TYPE, ID_KEY, CHECKS, SUMMA)
++        SELECT k.ID_ORGANIZATION, k.ID_CONTACT, k.KEY_TYPE, k.ID_KEY, k.CHECKS, k.SUMMA
++        FROM (
++            SELECT d.ID_ORGANIZATION, d.ID_CONTACT, KEY_TYPE = CAST(1 AS tinyint)
++                 , ID_KEY = CAST(d.ID_PRODUCT AS bigint), CHECKS = COUNT(*), SUMMA = ISNULL(SUM(d.SUMMA), 0)
++            FROM dbo.I_CLIENT_ITEM_DAY AS d WITH (NOLOCK)
++            WHERE d.DATA = @d AND d.ID_COMPANY = @idc
++            GROUP BY d.ID_ORGANIZATION, d.ID_CONTACT, d.ID_PRODUCT
++
++            UNION ALL
++            SELECT g.ID_ORGANIZATION, g.ID_CONTACT, CAST(2 AS tinyint), g.ID_CAT
++                 , COUNT(*), ISNULL(SUM(g.SUMMA), 0)
++            FROM (SELECT d.ID_ORGANIZATION, d.ID_CONTACT, d.ID_CHECK, c.ID_CAT, SUMMA = SUM(d.SUMMA)
++                  FROM dbo.I_CLIENT_ITEM_DAY AS d WITH (NOLOCK)
++                  JOIN #kd_cat AS c ON c.ID_PRODUCT = d.ID_PRODUCT
++                  WHERE d.DATA = @d AND d.ID_COMPANY = @idc
++                  GROUP BY d.ID_ORGANIZATION, d.ID_CONTACT, d.ID_CHECK, c.ID_CAT) AS g
++            GROUP BY g.ID_ORGANIZATION, g.ID_CONTACT, g.ID_CAT
++
++            UNION ALL
++            SELECT g.ID_ORGANIZATION, g.ID_CONTACT, CAST(3 AS tinyint), CAST(g.ID_MISSION AS bigint)
++                 , COUNT(*), ISNULL(SUM(g.SUMMA), 0)
++            FROM (SELECT d.ID_ORGANIZATION, d.ID_CONTACT, d.ID_CHECK, m.ID_MISSION, SUMMA = SUM(d.SUMMA)
++                  FROM dbo.I_CLIENT_ITEM_DAY AS d WITH (NOLOCK)
++                  JOIN #miss AS m ON m.EXT5 = d.ID_CATEGORY_5_EXT
++                  WHERE d.DATA = @d AND d.ID_COMPANY = @idc
++                  GROUP BY d.ID_ORGANIZATION, d.ID_CONTACT, d.ID_CHECK, m.ID_MISSION) AS g
++            GROUP BY g.ID_ORGANIZATION, g.ID_CONTACT, g.ID_MISSION
++        ) AS k
++        OPTION (RECOMPILE);
++        SET @k_new = @@ROWCOUNT;
++        SELECT @k_old = COUNT_BIG(*) FROM dbo.I_CLIENT_ITEM_KEY_DAY WITH (NOLOCK) WHERE DATA = @d;
++        IF @k_new = @k_old
++        BEGIN
++            -- секция ключей — сначала во временную: EXCEPT прямо по витрине заставил бы сервер создать статистику по SUMMA
++            -- на всю таблицу (её нет); полный подсчёт разницы, не NOT EXISTS — цель «первая строка» толкает план к вложенным циклам
++            DROP TABLE IF EXISTS #kd_old;
++            CREATE TABLE #kd_old (ID_ORGANIZATION int NOT NULL, ID_CONTACT int NOT NULL, KEY_TYPE tinyint NOT NULL, ID_KEY bigint NOT NULL,
++                                  CHECKS int NOT NULL, SUMMA decimal(18, 2) NOT NULL, INDEX CCI_kd_old CLUSTERED COLUMNSTORE);
++            INSERT INTO #kd_old WITH (TABLOCK) (ID_ORGANIZATION, ID_CONTACT, KEY_TYPE, ID_KEY, CHECKS, SUMMA)
++            SELECT ID_ORGANIZATION, ID_CONTACT, KEY_TYPE, ID_KEY, CHECKS, SUMMA
++            FROM dbo.I_CLIENT_ITEM_KEY_DAY WITH (NOLOCK)
++            WHERE DATA = @d AND ID_COMPANY = @idc;
++            SELECT @k_diff = COUNT_BIG(*)
++            FROM (SELECT ID_ORGANIZATION, ID_CONTACT, KEY_TYPE, ID_KEY, CHECKS, SUMMA FROM #kd_new
++                  EXCEPT
++                  SELECT ID_ORGANIZATION, ID_CONTACT, KEY_TYPE, ID_KEY, CHECKS, SUMMA FROM #kd_old) AS x
++            OPTION (RECOMPILE);
++            DROP TABLE #kd_old;
++            IF @k_diff = 0
++                SET @kept = 1;
++        END
++        IF @kept = 1
++            SET @rows = @k_new;
++        ELSE
++        BEGIN
++            EXEC sys.sp_executesql @sql;
++            INSERT INTO dbo.I_CLIENT_ITEM_KEY_DAY WITH (TABLOCK)
++                   (DATA, ID_COMPANY, ID_ORGANIZATION, ID_CONTACT, KEY_TYPE, ID_KEY, CHECKS, SUMMA)
++            SELECT @d, @idc, ID_ORGANIZATION, ID_CONTACT, KEY_TYPE, ID_KEY, CHECKS, SUMMA
++            FROM #kd_new
++            ORDER BY KEY_TYPE, ID_KEY
++            OPTION (MAXDOP 1, RECOMPILE);
++            SET @rows = @@ROWCOUNT;
++        END
++        DROP TABLE #kd_new;
++    END
++    ELSE
++    BEGIN   -- Т3: прежний путь (ночью — день с изменившимися товарными строками; загрузка истории, пересборка ключей)
+     EXEC sys.sp_executesql @sql;
+ 
+     -- один оператор, сортировка по (тип ключа, ключ) внутри секции, один поток
+@@ -76,6 +160,7 @@
+     ORDER BY k.KEY_TYPE, k.ID_KEY
+     OPTION (MAXDOP 1, RECOMPILE);   -- план под объём своего дня (иначе кеш от малого дня — сбросы в tempdb)
+     SET @rows = @@ROWCOUNT;
++    END     -- Т3
+ 
+     -- отметка версии справочника дня (транзакция дня — у вызывающей процедуры; один вызов на день под замком витрины)
+     UPDATE dbo.CVM_CLIENT_ITEM_CAT_VER SET CAT_VER = @ver, BUILT_AT = SYSDATETIME() WHERE DATA = @d;
