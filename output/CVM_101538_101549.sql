@@ -86,14 +86,6 @@ begin
 	raiserror(N'101538–101549: списки уже в I_PROMO_OFFER — сборка пропущена', 10, 1)
 	return
 end
--- витрину покупок сейчас грузят (client_item_load / client_item_rebuild_keys / история держат этот замок, внутри — TRUNCATE секций, Sch-M):
--- сразу ошибка, без сборки #cl и без ожидания; раннер повторит через 10 минут
-if APPLOCK_TEST(N'public', N'CVM_CLIENT_ITEM', N'Exclusive', N'Session') = 0
-begin
-	raiserror(N'101538–101549: идёт загрузка витрины покупок (замок CVM_CLIENT_ITEM) — списки не собраны, раннер повторит', 16, 1)
-	return
-end
-
 declare @msg nvarchar(400)
 
 -- акция → группа
@@ -191,16 +183,11 @@ begin
 	return
 end
 
--- дни с покупками категорий каждой группы за 6 недель; витрина занята загрузкой — ошибка, раннер повторит
+-- дни с покупками категорий каждой группы за 6 недель; если витрину догружает история — ждём конца текущей недели загрузки
 drop table if exists #b
 create table #b (ID_CONTACT int not null, GRP tinyint not null, DAYS int not null, index cci_b clustered columnstore)
 
--- запрос к витрине — через sp_executesql: он компилируется уже под lock_timeout и на уровень ниже TRY, поэтому CATCH ловит и
--- ожидание Sch-M при компиляции (иначе 1222 при отложенной компиляции оператора в этом же пакете мимо CATCH, а пакет при
--- компиляции мог встать на Sch-M ещё до set lock_timeout), и 1222 / 601 при чтении
-begin try
-	set lock_timeout 120000
-	exec sys.sp_executesql N'
+exec sys.sp_executesql N'
 	insert #b with (tablock) (ID_CONTACT, GRP, DAYS)
 	select	k.ID_CONTACT
 			, c.GRP
@@ -219,14 +206,6 @@ begin try
 	group by k.ID_CONTACT, c.GRP
 	option (recompile)'
 		, N'@from date, @anchor date', @from = @from, @anchor = @anchor
-	set lock_timeout -1
-end try
-begin catch
-	set lock_timeout -1
-	set @msg = concat(N'101538–101549: витрина покупок недоступна (', error_number(), N': ', replace(error_message(), N'%', N'%%'), N') — списки не собраны, раннер повторит')
-	raiserror(@msg, 16, 1)
-	return
-end catch
 
 -- группа клиента: больше дней с покупками, при равенстве — меньший номер группы
 drop table if exists #g
