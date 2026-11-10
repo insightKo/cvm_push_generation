@@ -1,6 +1,7 @@
 -- ============================================================================================
--- CVM_GCG_REPORT — эффект глобальной контрольной группы (ГКГ): процедуры + расчёт июля–октября.
--- Запустить целиком в SSMS (F5). Июль–октябрь записываются в витрину I_GCG_REPORT и выводятся из неё.
+-- CVM_GCG_REPORT — эффект глобальной контрольной группы (ГКГ): процедуры + расчёт сентября и октября.
+-- Запустить целиком в SSMS (F5). Сентябрь и октябрь записываются в витрину I_GCG_REPORT и в таблицу слоёв
+-- I_GCG_REPORT_LAYER и выводятся из них. Июль и август (отправленные отчёты) скрипт не трогает.
 --
 -- Что меняется (решения 13.10.2026):
 --   1. «ДО» для коэффициента — фиксированное, до нарезки ГКГ. Считается ОДИН раз и хранится на клиента
@@ -35,8 +36,13 @@
 --      (@Y_MODE = 'CAP' — вместо исключения обрезать сумму до границы). Если в ГКГ ячейки меньше 4 покупателей —
 --      месяц в ячейке не обрабатывается.
 --
+--   7. Доп ТО по слоям давности (ячейкам) пишется в dbo.I_GCG_REPORT_LAYER — с сентября 2026; для блока отчёта ГКГ.
+--   8. Одинаковые чеки месяца (решение 10.11.2026) считаются один раз: тот же клиент, день, канал, магазин,
+--      час и минута, карта, сумма, сумма со скидкой и число товаров при разных номерах чека. «ДО» партий не пересчитывается:
+--      оно фиксировано, а равная доля копий в «ДО» ЦГ и ГКГ в Доп ТО сокращается.
+--
 -- Нагрузка: партия 1 (июльская) перезаводится с давностью — один проход по истории I_CHECKHEADER до 01.07.2026
--- включительно, один раз (повторный запуск скрипта её не трогает); затем июль, август и сентябрь — чеки каждого месяца.
+-- включительно, один раз (повторный запуск скрипта её не трогает); затем сентябрь и октябрь — чеки каждого месяца.
 -- Ночной шаг дальше читает только чеки месяца. Ночной шаг 49 (exec dbo.gcg_report;) не меняется.
 -- ============================================================================================
 
@@ -99,6 +105,34 @@ BEGIN
 END
 IF COL_LENGTH(N'dbo.I_GCG_PRE', N'SEGMENT') IS NULL ALTER TABLE dbo.I_GCG_PRE ADD SEGMENT tinyint NULL;
 IF COL_LENGTH(N'dbo.I_GCG_PRE', N'LAST_DATA') IS NULL ALTER TABLE dbo.I_GCG_PRE ADD LAST_DATA date NULL;
+
+-- Доп ТО по слоям давности (ячейкам) — для отчёта ГКГ, с сентября 2026 (служебная, сотни строк в месяц)
+IF OBJECT_ID(N'dbo.I_GCG_REPORT_LAYER', N'U') IS NULL
+    CREATE TABLE dbo.I_GCG_REPORT_LAYER
+    (
+          YEAR_MONTH      int           NOT NULL
+        , BATCH_ID        int           NOT NULL
+        , SEGMENT         int           NOT NULL
+        , [Сегмент]       nvarchar(30)  NOT NULL
+        , CELL            int           NOT NULL
+        , LAYER_FROM      int           NOT NULL   -- Активные — неделя с последней покупки до нарезки (1–6), Отток — месяц последней покупки (YYYYMM)
+        , LAYER_TO        int           NOT NULL
+        , [Клиентов ЦГ]   int           NULL
+        , [Клиентов ГКГ]  int           NULL
+        , [ТО ЦГ]         decimal(38,2) NULL
+        , [ТО ГКГ]        decimal(38,2) NULL
+        , [ТО ЦГ ДО]      decimal(38,2) NULL
+        , [ТО ГКГ ДО]     decimal(38,2) NULL
+        , [KOEF]          float         NULL
+        , [Доп ТО р]      decimal(38,6) NULL
+        , [SE]            float         NULL
+        , [ДИ 95% низ]    decimal(18,2) NULL
+        , [ДИ 95% верх]   decimal(18,2) NULL
+        , [Данные с]      date          NULL
+        , [Данные по]     date          NULL
+        , [Дата расчёта]  datetime2(0)  NULL
+        , CONSTRAINT PK_I_GCG_REPORT_LAYER PRIMARY KEY (YEAR_MONTH, BATCH_ID, SEGMENT, CELL)
+    );
 GO
 
 -- ============================== 3. ПРОЦЕДУРА ЗАВЕДЕНИЯ ПАРТИИ ==============================
@@ -208,6 +242,7 @@ BEGIN
 
     DECLARE @idc         int   = 1;
     DECLARE @kappa       float = 0.5;     -- выбросы: за границей в среднем меньше половины клиента слоя
+    DECLARE @layers_from int   = 202609;  -- Доп ТО по слоям давности пишется с сентября 2026
 
     IF @Y_MODE IS NULL OR @Y_MODE NOT IN ('CAP', 'DROP')
         THROW 50007, N'gcg_report: @Y_MODE — только ''CAP'' или ''DROP''', 1;
@@ -235,7 +270,8 @@ BEGIN
         INSERT INTO @months (YM)
         SELECT DISTINCT YEAR_MONTH
         FROM dbo.I_GCG_REPORT (nolock)
-        WHERE [Полный месяц] = 0 AND YEAR_MONTH < @ym_last;
+        WHERE [Полный месяц] = 0 AND YEAR_MONTH < @ym_last
+          AND [Источник] = N'процедура gcg_report';   -- строки из файлов и от Манзаны ночной шаг не трогает
     END
 
     -- имя @cur_ym: на сервере имена переменных регистронезависимы, @ym совпало бы с параметром @YM.
@@ -323,19 +359,26 @@ BEGIN
         CLOSE gcg_lay_cur;
         DEALLOCATE gcg_lay_cur;
 
-        -- 3. Оборот и чеки периода партии
+        -- 3. Оборот и чеки периода партии.
+        --    Одинаковые чеки считаются один раз (решение 10.11.2026): тот же клиент, день, канал, магазин,
+        --    час и минута (CLOCK, TIME), карта, сумма, сумма со скидкой и число товаров при разных номерах чека — копия одного чека
+        --    (после перезаливки 07.11.2026 ~9 % чеков 01.08–02.11 лежат дважды, номер отличается на 2^44).
         DROP TABLE IF EXISTS #gcg_cur;
-        SELECT m.BATCH_ID
-             , m.ID_CONTACT
-             , Y      = sum(IIF(a.DATA >= m.P_FROM, cast(a.COST_DISCOUNT AS float), NULL))
-             , CHECKS = count(IIF(a.DATA >= m.P_FROM, a.ID_CHECK, NULL))
+        SELECT d.BATCH_ID
+             , d.ID_CONTACT
+             , Y      = sum(d.COST_DISCOUNT)
+             , CHECKS = count(*)
         INTO #gcg_cur
-        FROM dbo.I_CHECKHEADER AS a (nolock)
-             JOIN #gcg_pop AS m ON m.ID_CONTACT = a.ID_CONTACT
-        WHERE a.ID_COMPANY = @idc
-          AND a.ID_CONTACT <> 0
-          AND a.DATA >= @scan_from AND a.DATA < @dt_to
-        GROUP BY m.BATCH_ID, m.ID_CONTACT
+        FROM (SELECT m.BATCH_ID, a.ID_CONTACT, COST_DISCOUNT = cast(a.COST_DISCOUNT AS float)
+              FROM dbo.I_CHECKHEADER AS a (nolock)
+                   JOIN #gcg_pop AS m ON m.ID_CONTACT = a.ID_CONTACT
+              WHERE a.ID_COMPANY = @idc
+                AND a.ID_CONTACT <> 0
+                AND a.DATA >= @scan_from AND a.DATA < @dt_to
+                AND a.DATA >= m.P_FROM
+              GROUP BY m.BATCH_ID, a.ID_CONTACT, a.DATA, a.ID_ORGANIZATION, a.ID_SHOP, a.CLOCK, a.TIME
+                     , a.CARD_NUMBER, a.COST, a.COST_DISCOUNT, a.SKU) AS d
+        GROUP BY d.BATCH_ID, d.ID_CONTACT
         OPTION (RECOMPILE);
         CREATE CLUSTERED COLUMNSTORE INDEX cci_gcg_cur ON #gcg_cur;
 
@@ -345,6 +388,7 @@ BEGIN
              , p.ID_CONTACT
              , p.SEGMENT
              , l.CELL
+             , p.LAYER
              , GRP    = IIF(p.GCG = 1, 'CG', 'TG')   -- TG = ЦГ
              , Y      = isnull(c.Y, 0)
              , CHECKS = isnull(c.CHECKS, 0)
@@ -631,12 +675,32 @@ BEGIN
              , @dt_from, @data_to, @full, NULL, sysdatetime(), N'процедура gcg_report'
         FROM #gcg_seg AS s;
 
+        -- Доп ТО по слоям давности (ячейкам) — с сентября 2026
+        DELETE FROM dbo.I_GCG_REPORT_LAYER WHERE YEAR_MONTH = @cur_ym;
+        IF @cur_ym >= @layers_from
+            INSERT INTO dbo.I_GCG_REPORT_LAYER
+                  (YEAR_MONTH, BATCH_ID, SEGMENT, [Сегмент], CELL, LAYER_FROM, LAYER_TO
+                 , [Клиентов ЦГ], [Клиентов ГКГ], [ТО ЦГ], [ТО ГКГ], [ТО ЦГ ДО], [ТО ГКГ ДО]
+                 , [KOEF], [Доп ТО р], [SE], [ДИ 95% низ], [ДИ 95% верх], [Данные с], [Данные по], [Дата расчёта])
+            SELECT @cur_ym, r.BATCH_ID, r.SEGMENT, IIF(r.SEGMENT = 2, N'Активные', N'Отток'), r.CELL, lr.LAYER_FROM, lr.LAYER_TO
+                 , cast(r.T_CLIENTS AS int), cast(r.C_CLIENTS AS int), r.T_TO, r.C_TO, r.T_BEF, r.C_BEF
+                 , r.KOEF, d.ADD_TO, e.SE, d.ADD_TO - 1.96 * e.SE, d.ADD_TO + 1.96 * e.SE
+                 , b.P_FROM, @data_to, sysdatetime()
+            FROM #gcg_rep AS r
+                 JOIN #gcg_se    AS e ON e.BATCH_ID = r.BATCH_ID AND e.SEGMENT = r.SEGMENT AND e.CELL = r.CELL
+                 JOIN #gcg_batch AS b ON b.BATCH_ID = r.BATCH_ID
+                 JOIN (SELECT BATCH_ID, SEGMENT, CELL, LAYER_FROM = min(LAYER), LAYER_TO = max(LAYER)
+                       FROM #gcg_cl
+                       GROUP BY BATCH_ID, SEGMENT, CELL) AS lr
+                   ON lr.BATCH_ID = r.BATCH_ID AND lr.SEGMENT = r.SEGMENT AND lr.CELL = r.CELL
+                 CROSS APPLY (SELECT ADD_TO = r.T_TO - r.T_BEF * r.KOEF) AS d;
+
         COMMIT TRANSACTION;
     END
 END
 GO
 
--- ============================== 5. ИЮЛЬСКАЯ ПАРТИЯ, ИЮЛЬ–ОКТЯБРЬ ==============================
+-- ============================== 5. ПАРТИИ, СЕНТЯБРЬ И ОКТЯБРЬ ==============================
 -- Один пакет до конца файла: при ошибке дальше ничего не выполняется.
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -662,19 +726,17 @@ BEGIN
     EXEC dbo.gcg_batch_add @BATCH_ID = @rb, @DRAW_DATE = @rd, @FIRST_FROM = @rff, @FIRST_TO = @rft, @PRE_TO = @rpt, @NOTE = @rn, @REPLACE = 1;
 END
 
--- ИЮЛЬ, АВГУСТ, СЕНТЯБРЬ и ОКТЯБРЬ (по последний день данных): считаются и записываются в витрину I_GCG_REPORT
--- (июль — вместо строк Манзаны, август — вместо строк из файла); в выводе — выбросы и расчёт по партиям
-EXEC dbo.gcg_report @YM = 202607, @debug = 1, @REPLACE_FILES = 1;
-EXEC dbo.gcg_report @YM = 202608, @debug = 1, @REPLACE_FILES = 1;
+-- СЕНТЯБРЬ и ОКТЯБРЬ (по последний день данных): витрина I_GCG_REPORT и слои I_GCG_REPORT_LAYER.
+-- Июль и август — отправленные отчёты, не пересчитываются.
 EXEC dbo.gcg_report @YM = 202609, @debug = 1;
 EXEC dbo.gcg_report @YM = 202610, @debug = 1;   -- октябрь — по последний день данных
 
--- ЭФФЕКТ ИЮЛЯ–ОКТЯБРЯ — из витрины
+-- ЭФФЕКТ — из витрины
 SELECT YEAR_MONTH, [Сегмент], [Доп ТО р], [ДИ 95% низ], [ДИ 95% верх], [Значимо]
      , [Клиентов ЦГ], [Клиентов ГКГ], [ТО ЦГ], [ТО ГКГ], [ТО ЦГ ДО], [ТО ГКГ ДО], [KOEF]
      , [BUDGET], [BUDGET_CG], [Данные с], [Данные по], [Дата расчёта]
 FROM dbo.I_GCG_REPORT (nolock)
-WHERE YEAR_MONTH IN (202607, 202608, 202609, 202610)
+WHERE YEAR_MONTH IN (202609, 202610)
 ORDER BY YEAR_MONTH, SEGMENT;
 
 SELECT YEAR_MONTH
@@ -688,6 +750,17 @@ SELECT YEAR_MONTH
      , [ТО ЦГ]        = sum([ТО ЦГ])
      , [ТО ГКГ]       = sum([ТО ГКГ])
 FROM dbo.I_GCG_REPORT (nolock)
-WHERE YEAR_MONTH IN (202607, 202608, 202609, 202610)
+WHERE YEAR_MONTH IN (202609, 202610)
 GROUP BY YEAR_MONTH
 ORDER BY YEAR_MONTH;
+
+-- ДОП ТО ПО СЛОЯМ ДАВНОСТИ — из таблицы слоёв
+SELECT YEAR_MONTH, [Партия] = BATCH_ID, [Сегмент], [Ячейка] = CELL
+     , [Слой] = IIF(SEGMENT = 2
+                    , concat(LAYER_FROM, IIF(LAYER_TO > LAYER_FROM, concat(N'–', LAYER_TO), N''), N' нед.')
+                    , concat(LAYER_TO / 100, N'.', right(concat(N'0', LAYER_TO % 100), 2)
+                           , IIF(LAYER_FROM < LAYER_TO, concat(N' … ', LAYER_FROM / 100, N'.', right(concat(N'0', LAYER_FROM % 100), 2)), N'')))
+     , [Клиентов ЦГ], [Клиентов ГКГ], [Доп ТО р], [ДИ 95% низ], [ДИ 95% верх], [KOEF], [Данные с], [Данные по]
+FROM dbo.I_GCG_REPORT_LAYER (nolock)
+WHERE YEAR_MONTH IN (202609, 202610)
+ORDER BY YEAR_MONTH, BATCH_ID, SEGMENT, CELL;
